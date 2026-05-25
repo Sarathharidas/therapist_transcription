@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Therapy Session Recorder</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #6c8ef5;
+      --accent-glow: rgba(108,142,245,0.25);
+      --red: #ef4444;
+      --red-glow: rgba(239,68,68,0.25);
+      --orange: #f97316;
+      --green: #22c55e;
+      --text: #e8eaf6;
+      --muted: #8892b0;
+      --therapist: #a78bfa;
+      --patient: #38bdf8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+    }
+
+    header .logo {
+      font-size: 22px;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    header .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 860px;
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 36px;
+    }
+
+    /* ── Record Card ── */
+    .record-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 48px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .record-btn {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      font-size: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s, box-shadow 0.15s;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 var(--accent-glow);
+    }
+
+    .record-btn:hover { transform: scale(1.06); }
+
+    .record-btn.recording {
+      background: var(--red);
+      box-shadow: 0 0 0 12px var(--red-glow);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 8px var(--red-glow); }
+      50%       { box-shadow: 0 0 0 20px rgba(239,68,68,0.08); }
+    }
+
+    .record-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      animation: none;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+
+    .status-dot.recording { background: var(--red); animation: blink 1s step-start infinite; }
+    .status-dot.processing { background: var(--accent); animation: blink 0.6s step-start infinite; }
+    .status-dot.done { background: var(--green); animation: none; }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    #statusText {
+      font-size: 15px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    #timer {
+      font-size: 38px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 300;
+      color: var(--text);
+      letter-spacing: 2px;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Spinner ── */
+    .spinner-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .spinner-wrap.visible { display: flex; }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner-label {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* ── Results ── */
+    #results {
+      width: 100%;
+      display: none;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    #results.visible { display: flex; }
+
+    .result-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 14px 20px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    .section-body {
+      padding: 20px;
+      max-height: 420px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    /* Colour speaker labels in transcript */
+    .speaker-therapist { color: var(--therapist); font-weight: 600; }
+    .speaker-patient    { color: var(--patient);   font-weight: 600; }
+
+    /* Markdown-style bold in summary */
+    .section-body strong { color: var(--text); }
+    .section-body h2, .section-body h3 { color: var(--accent); margin: 12px 0 6px; }
+
+    /* Scrollbar */
+    .section-body::-webkit-scrollbar { width: 6px; }
+    .section-body::-webkit-scrollbar-track { background: transparent; }
+    .section-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Error banner ── */
+    .error-banner {
+      display: none;
+      width: 100%;
+      background: rgba(249,115,22,0.12);
+      border: 1px solid var(--orange);
+      border-radius: 12px;
+      padding: 16px 20px;
+      color: var(--orange);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .error-banner.visible { display: block; }
+    .error-banner a { color: var(--accent); }
+
+    .new-session-btn {
+      align-self: center;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .new-session-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    footer {
+      padding: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🧠</span>
+  <div>
+    <h1>Therapy Session Recorder</h1>
+    <div class="subtitle">Record → Transcribe → Summarise with Gemini</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Record Card -->
+  <div class="record-card">
+    <div id="timer">0:00</div>
+
+    <button class="record-btn" id="recordBtn" title="Start recording">🎙️</button>
+
+    <div class="status-row">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Ready to record</span>
+    </div>
+
+    <!-- Processing spinner -->
+    <div class="spinner-wrap" id="spinnerWrap">
+      <div class="spinner"></div>
+      <div class="spinner-label" id="spinnerLabel">Uploading audio…</div>
+    </div>
+
+    <p class="hint">Press the button to start recording the session.<br>
+      Press again to stop — Gemini will transcribe and summarise it.</p>
+  </div>
+
+  <!-- Error banner -->
+  <div class="error-banner" id="errorBanner"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <div class="result-section">
+      <div class="section-header">
+        <span class="section-title">📝 Transcript</span>
+        <button class="copy-btn" id="copyTranscript">Copy</button>
+      </div>
+      <div class="section-body" id="transcriptBody"></div>
+    </div>
+
+    <div class="result-section">
+      <div class="section-header">
+        <span class="section-title">🩺 Clinical Notes</span>
+        <button class="copy-btn" id="copySummary">Copy</button>
+      </div>
+      <div class="section-body" id="summaryBody"></div>
+    </div>
+
+    <button class="new-session-btn" id="newSessionBtn">＋ New Session</button>
+
+  </div>
+
+</main>
+
+<footer>Audio processed via Google Gemini · Not stored after processing</footer>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let mediaRecorder = null;
+  let chunks = [];
+  let timerInterval = null;
+  let seconds = 0;
+  let isRecording = false;
+
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const recordBtn      = document.getElementById('recordBtn');
+  const statusDot      = document.getElementById('statusDot');
+  const statusText     = document.getElementById('statusText');
+  const timerEl        = document.getElementById('timer');
+  const spinnerWrap    = document.getElementById('spinnerWrap');
+  const spinnerLabel   = document.getElementById('spinnerLabel');
+  const results        = document.getElementById('results');
+  const transcriptBody = document.getElementById('transcriptBody');
+  const summaryBody    = document.getElementById('summaryBody');
+  const copyTranscript = document.getElementById('copyTranscript');
+  const copySummary    = document.getElementById('copySummary');
+  const newSessionBtn  = document.getElementById('newSessionBtn');
+  const errorBanner    = document.getElementById('errorBanner');
+
+  // ── Timer ──────────────────────────────────────────────────────────────────
+  function startTimer() {
+    seconds = 0;
+    timerEl.textContent = '0:00';
+    timerInterval = setInterval(() => {
+      seconds++;
+      const m = Math.floor(seconds / 60);
+      const s = String(seconds % 60).padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  // ── Status helpers ─────────────────────────────────────────────────────────
+  function setStatus(dot, text) {
+    statusDot.className = 'status-dot' + (dot ? ` ${dot}` : '');
+    statusText.textContent = text;
+  }
+
+  // ── Record ─────────────────────────────────────────────────────────────────
+  async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // Pick best supported format
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
+      .find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    chunks = [];
+
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+      submitAudio(blob);
+    };
+
+    mediaRecorder.start(250); // collect every 250 ms
+    isRecording = true;
+    recordBtn.classList.add('recording');
+    recordBtn.textContent = '⏹';
+    recordBtn.title = 'Stop recording';
+    setStatus('recording', 'Recording…');
+    startTimer();
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    isRecording = false;
+    stopTimer();
+    recordBtn.disabled = true;
+    recordBtn.classList.remove('recording');
+    recordBtn.textContent = '⏳';
+    setStatus('processing', 'Processing…');
+    spinnerWrap.classList.add('visible');
+    spinnerLabel.textContent = 'Uploading audio to Gemini…';
+  }
+
+  recordBtn.addEventListener('click', async () => {
+    if (!isRecording) {
+      try {
+        await startRecording();
+      } catch (err) {
+        alert('Microphone access denied. Please allow mic permissions and reload.');
+        console.error(err);
+      }
+    } else {
+      stopRecording();
+    }
+  });
+
+  // ── Submit to backend ──────────────────────────────────────────────────────
+  async function submitAudio(blob) {
+    results.classList.remove('visible');
+
+    const form = new FormData();
+    form.append('audio', blob, 'session.webm');
+
+    try {
+      spinnerLabel.textContent = 'Transcribing with Gemini…';
+
+      const resp = await fetch('/process', { method: 'POST', body: form });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        const msg = (resp.status === 429)
+          ? 'quota exceeded (429)'
+          : (err.detail || `Server error ${resp.status}`);
+        throw new Error(msg);
+      }
+
+      const data = await resp.json();
+      renderResults(data.transcript, data.summary);
+
+    } catch (err) {
+      showError(err.message);
+      resetUI();
+    }
+  }
+
+  // ── Render results ─────────────────────────────────────────────────────────
+  function renderResults(transcript, summary) {
+    spinnerWrap.classList.remove('visible');
+    setStatus('done', 'Done ✓');
+
+    // Colour-code speaker labels in transcript
+    transcriptBody.innerHTML = escapeHtml(transcript)
+      .replace(/^(Therapist:)/gm, '<span class="speaker-therapist">Therapist:</span>')
+      .replace(/^(Patient:)/gm, '<span class="speaker-patient">Patient:</span>')
+      .replace(/^(Unknown:)/gm, '<span style="color:var(--muted)">Unknown:</span>');
+
+    // Render simple markdown in summary
+    summaryBody.innerHTML = renderMarkdown(summary);
+
+    results.classList.add('visible');
+
+    // Store raw text for copying
+    copyTranscript._text = transcript;
+    copySummary._text = summary;
+  }
+
+  // ── Minimal markdown renderer ──────────────────────────────────────────────
+  function renderMarkdown(text) {
+    return escapeHtml(text)
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^---$/gm, '<hr style="border-color:var(--border);margin:12px 0">')
+      .replace(/\n/g, '<br>');
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Copy buttons ───────────────────────────────────────────────────────────
+  [copyTranscript, copySummary].forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(btn._text || '');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+
+  // ── Error banner ───────────────────────────────────────────────────────────────
+  function showError(msg) {
+    const isQuota = msg.toLowerCase().includes('quota') || msg.includes('429');
+    errorBanner.innerHTML = isQuota
+      ? `⚠️ <strong>Gemini API quota exceeded.</strong><br><br>
+         Your free-tier limit is used up. To fix this:<br>
+         1. Go to <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> → enable billing on your project<br>
+         2. Or wait until your daily quota resets (midnight Pacific)<br>
+         3. Or try a new API key from a fresh Google account`
+      : `⚠️ <strong>Error:</strong> ${msg}`;
+    errorBanner.classList.add('visible');
+  }
+
+  // ── New session ────────────────────────────────────────────────────────────
+  newSessionBtn.addEventListener('click', resetUI);
+
+  function resetUI() {
+    results.classList.remove('visible');
+    spinnerWrap.classList.remove('visible');
+    errorBanner.classList.remove('visible');
+    recordBtn.disabled = false;
+    recordBtn.classList.remove('recording');
+    recordBtn.textContent = '🎙️';
+    recordBtn.title = 'Start recording';
+    timerEl.textContent = '0:00';
+    setStatus('', 'Ready to record');
+    chunks = [];
+    isRecording = false;
+  }
+</script>
+
+</body>
+</html>
