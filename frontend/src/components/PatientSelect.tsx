@@ -15,12 +15,18 @@ type DialogProps = {
 function AddPatientDialog({ onClose, onAdd }: DialogProps) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAdd = async () => {
     if (!name.trim()) return;
     setLoading(true);
-    await onAdd(name.trim());
-    setLoading(false);
+    setError(null);
+    try {
+      await onAdd(name.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add patient. Is the backend running?');
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,6 +59,12 @@ function AddPatientDialog({ onClose, onAdd }: DialogProps) {
           placeholder="e.g. Arthur Pemberton"
           className="w-full bg-background border border-border px-4 py-3 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/40"
         />
+
+        {error && (
+          <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            ⚠️ {error}
+          </p>
+        )}
 
         <div className="flex justify-end gap-3 mt-8">
           <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -97,7 +109,7 @@ export function PatientSelect({ onSelect }: Props) {
   );
 
   const handleAddPatient = async (name: string) => {
-    const newPatient = await createPatient(name);
+    const newPatient = await createPatient(name); // let errors bubble up to dialog
     setPatients((prev) => [newPatient, ...prev]);
     setAddOpen(false);
     onSelect(newPatient);
