@@ -73,36 +73,9 @@ Rules:
 SUMMARY_PROMPT_TEMPLATE = """
 You are an experienced clinical psychologist writing session notes.
 
-Based on the transcript below, produce structured clinical notes:
+Based on the transcript below, produce structured clinical notes of the trascript below. Summary should be succinct
 
-## Session Summary
 
-**Date:** {date}
-
-### Presenting Concerns
-(What the patient brought to the session today)
-
-### Key Themes & Topics
-(Main psychological themes that emerged)
-
-### Patient's Emotional State
-(Affect, mood, engagement level observed throughout)
-
-### Therapeutic Interventions Used
-(Techniques, approaches, or frameworks the therapist applied)
-
-### Notable Moments
-(Breakthroughs, resistance, significant disclosures, or shifts)
-
-### Risk Assessment
-(Mention only if relevant — suicidality, self-harm, substance use, harm to others.
-If none apparent, write: "No immediate risk factors identified.")
-
-### Follow-Up / Action Items
-(Homework, referrals, topics to revisit next session)
-
-### Clinician Observations
-(Anything else clinically relevant not captured above)
 
 ---
 TRANSCRIPT:
