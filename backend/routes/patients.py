@@ -1,19 +1,18 @@
 """
 Patient routes
-  GET  /api/patients   — list all patients for the seeded clinician
+  GET  /api/patients   — list all patients for the authenticated clinician
   POST /api/patients   — create a new patient
 """
 
-import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.db import Patient
-from backend.db.seed import get_clinician_id
+from backend.db import Clinician, Patient
 from backend.db.session import get_db
+from backend.services.auth import get_current_clinician
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -49,12 +48,14 @@ def _to_out(p: Patient) -> PatientOut:
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("", response_model=List[PatientOut])
-def list_patients(db: Session = Depends(get_db)):
-    """Return all patients belonging to the seeded clinician, newest first."""
-    cid = get_clinician_id(db)
+def list_patients(
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Return all patients belonging to the authenticated clinician, newest first."""
     rows = (
         db.query(Patient)
-        .filter(Patient.clinician_id == uuid.UUID(cid))
+        .filter(Patient.clinician_id == clinician.clinician_id)
         .order_by(Patient.created_at.desc())
         .all()
     )
@@ -62,14 +63,17 @@ def list_patients(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=PatientOut, status_code=201)
-def create_patient(body: PatientCreate, db: Session = Depends(get_db)):
-    """Create a new patient under the seeded clinician."""
+def create_patient(
+    body: PatientCreate,
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Create a new patient under the authenticated clinician."""
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Patient name cannot be empty")
 
-    cid = get_clinician_id(db)
-    patient = Patient(name=name, clinician_id=uuid.UUID(cid))
+    patient = Patient(name=name, clinician_id=clinician.clinician_id)
     db.add(patient)
     db.commit()
     db.refresh(patient)

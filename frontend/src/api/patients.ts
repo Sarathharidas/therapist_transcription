@@ -1,5 +1,5 @@
 import type { Patient } from '../types';
-import { API_BASE } from './base';
+import { fetchWithAuth } from './base';
 
 type PatientOut = {
   patient_id: string;
@@ -24,14 +24,14 @@ function toPatient(p: PatientOut): Patient {
 }
 
 export async function listPatients(): Promise<Patient[]> {
-  const resp = await fetch(`${API_BASE}/api/patients`);
+  const resp = await fetchWithAuth('/api/patients');
   if (!resp.ok) throw new Error(`Failed to load patients: ${resp.status}`);
   const data = (await resp.json()) as PatientOut[];
   return data.map(toPatient);
 }
 
 export async function createPatient(name: string): Promise<Patient> {
-  const resp = await fetch(`${API_BASE}/api/patients`, {
+  const resp = await fetchWithAuth('/api/patients', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),

@@ -1,3 +1,9 @@
+export type Clinician = {
+  id: string;
+  name: string;
+  email: string;
+};
+
 export type Patient = {
   id: string;        // DB UUID
   name: string;

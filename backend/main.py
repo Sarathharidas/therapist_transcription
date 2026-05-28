@@ -16,13 +16,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-from backend.db import Base                          # noqa: E402
-from backend.db.seed import seed_clinician           # noqa: E402
-from backend.db.session import SessionLocal, engine  # noqa: E402
+from backend.db import Base                                    # noqa: E402
+from backend.db.session import engine                          # noqa: E402
+from backend.routes.auth import router as auth_router          # noqa: E402
 from backend.routes.patients import router as patients_router  # noqa: E402
 from backend.routes.sessions import router as sessions_router  # noqa: E402
 
-app = FastAPI(title="Aura Clinical API", version="1.0.0")
+app = FastAPI(title="Aura Clinical API", version="2.0.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
@@ -40,19 +40,16 @@ app.add_middleware(
 )
 
 # ── API routes ─────────────────────────────────────────────────────────────
+app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(sessions_router)
 
 
-# ── Startup: create tables + seed clinician ────────────────────────────────
+# ── Startup: create tables ─────────────────────────────────────────────────
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        seed_clinician(db)
-    finally:
-        db.close()
+    print("[startup] Database tables ready")
 
 
 # ── Launch ─────────────────────────────────────────────────────────────────

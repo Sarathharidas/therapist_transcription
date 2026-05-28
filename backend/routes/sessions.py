@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from google.genai.errors import ClientError
 from sqlalchemy.orm import Session
 
-from backend.db import Summary
+from backend.db import Clinician, Patient, Summary
 from backend.db.session import get_db
 from backend.models import SessionResult
+from backend.services.auth import get_current_clinician
 from backend.services.gemini import get_service
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -23,8 +24,21 @@ async def process_session(
     audio: UploadFile = File(...),
     patient_id: str = Form(...),
     db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
 ):
-    """Receive recorded audio → transcribe → summarise → save → return."""
+    """Receive recorded audio → verify patient ownership → transcribe → summarise → save → return."""
+
+    # Verify patient belongs to the authenticated clinician
+    patient = (
+        db.query(Patient)
+        .filter(
+            Patient.patient_id == uuid.UUID(patient_id),
+            Patient.clinician_id == clinician.clinician_id,
+        )
+        .first()
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
     # Save upload to temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:

@@ -1,5 +1,5 @@
 import type { SessionResult } from '../types';
-import { API_BASE } from './base';
+import { fetchWithAuth } from './base';
 
 export async function processSession(
   audio: Blob,
@@ -9,7 +9,7 @@ export async function processSession(
   form.append('audio', audio, 'session.webm');
   form.append('patient_id', patientId);
 
-  const resp = await fetch(`${API_BASE}/api/sessions/process`, {
+  const resp = await fetchWithAuth('/api/sessions/process', {
     method: 'POST',
     body: form,
   });

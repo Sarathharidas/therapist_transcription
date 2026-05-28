@@ -26,6 +26,7 @@ class Clinician(Base):
     )
     email = Column(Text, unique=True, nullable=False)
     name = Column(Text, nullable=False)
+    google_id = Column(Text, unique=True, nullable=True)  # Google 'sub' claim
 
 
 class Patient(Base):
