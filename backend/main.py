@@ -1,6 +1,6 @@
 """
 Aura Clinical — Backend
-FastAPI app: mounts API routes + serves built frontend in production.
+FastAPI app: API only. Frontend is deployed separately on Vercel.
 """
 
 import os
@@ -13,8 +13,6 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
@@ -27,12 +25,14 @@ from backend.routes.sessions import router as sessions_router  # noqa: E402
 app = FastAPI(title="Aura Clinical API", version="1.0.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "http://localhost:8000",
+        *([ FRONTEND_ORIGIN ] if FRONTEND_ORIGIN else []),
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -53,21 +53,6 @@ def on_startup() -> None:
         seed_clinician(db)
     finally:
         db.close()
-
-
-# ── Serve built frontend (production) ─────────────────────────────────────
-FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
-
-if FRONTEND_DIST.exists():
-    app.mount(
-        "/assets",
-        StaticFiles(directory=str(FRONTEND_DIST / "assets")),
-        name="assets",
-    )
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_fallback(full_path: str):  # noqa: ARG001
-        return FileResponse(str(FRONTEND_DIST / "index.html"))
 
 
 # ── Launch ─────────────────────────────────────────────────────────────────
