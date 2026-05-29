@@ -45,6 +45,7 @@ function renderTranscript(text: string): string {
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return esc(text)
     .replace(/^(Therapist:)/gm, '<span class="font-medium text-violet-600">Therapist:</span>')
+    .replace(/^(Patient \d+:)/gm, '<span class="font-medium text-teal-600">$1</span>')
     .replace(/^(Patient:)/gm, '<span class="font-medium text-sky-600">Patient:</span>')
     .replace(/^(Unknown:)/gm, '<span class="text-muted-foreground">Unknown:</span>');
 }

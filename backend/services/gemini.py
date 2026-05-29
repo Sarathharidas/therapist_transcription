@@ -16,24 +16,34 @@ MODEL = "gemini-2.5-flash"
 TRANSCRIPT_PROMPT = """
 You are transcribing a therapy session recording.
 
-The speakers are:
-- Therapist — the mental health professional
-- Patient — the person receiving therapy
+The session has:
+- 1 Therapist — the mental health professional
+- 1 or more Patients — people receiving therapy
 
-The audio may contain a mix of Malayalam and English (Manglish / code-switching).
-Transcribe everything in English only:
+Speaker labelling rules:
+- If there is only ONE patient voice, label them as "Patient:"
+- If there are TWO OR MORE patient voices, label them as "Patient 1:", "Patient 2:", etc.
+  Assign numbers by order of first speech — the first patient to speak is Patient 1.
+- Keep speaker labels consistent throughout the entire transcript.
+- The therapist is usually the one asking questions and guiding the session.
+
+Language rules:
+- The audio may contain a mix of Malayalam and English (Manglish / code-switching).
+- Transcribe everything in English only.
 - English speech → transcribe verbatim
 - Malayalam speech → translate to natural English
 
-Format every turn as:
+Format every turn on its own line:
 Therapist: <text>
-Patient: <text>
+Patient: <text>          ← single patient
+Patient 1: <text>        ← multiple patients
+Patient 2: <text>
 
 Rules:
 - Label every turn; never skip content
 - Include long silences as [pause]
-- Use "Unknown:" only when the speaker is genuinely unclear
-- Output ONLY the transcript — no preamble or commentary
+- Use "Unknown:" only when the speaker is genuinely unclear after careful listening
+- Output ONLY the transcript — no preamble, no commentary, no explanation
 """
 
 SUMMARY_TEMPLATE = """
