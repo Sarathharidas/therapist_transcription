@@ -39,10 +39,15 @@ function renderSummary(text: string): string {
     .join('');
 }
 
+function stripTimestamps(text: string): string {
+  // Remove common Gemini timestamp formats: [00:01:23], [0:00], (00:01:23), (0:00)
+  return text.replace(/[\[(]\d{1,2}:\d{2}(?::\d{2})?\s*[\])][\s]*/g, '');
+}
+
 function renderTranscript(text: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return esc(text)
+  return esc(stripTimestamps(text))
     .replace(/^(Therapist:)/gm, '<span class="font-medium text-violet-600">Therapist:</span>')
     .replace(/^(Patient \d+:)/gm, '<span class="font-medium text-teal-600">$1</span>')
     .replace(/^(Patient:)/gm, '<span class="font-medium text-sky-600">Patient:</span>')
