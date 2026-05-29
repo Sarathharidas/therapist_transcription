@@ -7,7 +7,9 @@ import { SessionView } from './components/SessionView';
 import { LoginPage } from './components/LoginPage';
 import { getMe, logout } from './api/auth';
 import { token } from './api/base';
-import type { AppView, Clinician, Patient } from './types';
+import { getSession } from './api/sessions';
+import { ResultsPanel } from './components/ResultsPanel';
+import type { AppView, Clinician, Patient, PastSession, SessionDetail } from './types';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -16,6 +18,8 @@ function AppInner() {
   const [clinician, setClinician] = useState<Clinician | null>(null);
   const [view, setView] = useState<AppView>('select');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [pastSession, setPastSession] = useState<SessionDetail | null>(null);
+  const [pastSessionLoading, setPastSessionLoading] = useState(false);
 
   // Check for existing valid token on mount — skip entirely if no token stored
   useEffect(() => {
@@ -47,6 +51,21 @@ function AppInner() {
   const handleNewSession = () => {
     setView('select');
     setSelectedPatient(null);
+    setPastSession(null);
+  };
+
+  const handleSelectSession = async (session: PastSession) => {
+    setPastSessionLoading(true);
+    setPastSession(null);
+    setView('past-session');
+    try {
+      const detail = await getSession(session.id);
+      setPastSession(detail);
+    } catch {
+      setView('select');
+    } finally {
+      setPastSessionLoading(false);
+    }
   };
 
   // Loading state while checking token
@@ -69,7 +88,13 @@ function AppInner() {
   // Authenticated — show main app
   return (
     <div className="flex h-screen w-full bg-background text-foreground antialiased overflow-hidden">
-      <Sidebar clinician={clinician} selectedPatient={selectedPatient} onNewSession={handleNewSession} />
+      <Sidebar
+        clinician={clinician}
+        selectedPatient={selectedPatient}
+        onNewSession={handleNewSession}
+        onSelectSession={handleSelectSession}
+        activeSummaryId={pastSession?.summary_id}
+      />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
@@ -114,10 +139,33 @@ function AppInner() {
           </div>
         </header>
 
-        {view === 'select' ? (
+        {view === 'select' && (
           <PatientSelect onSelect={handleSelectPatient} />
-        ) : (
+        )}
+        {view === 'session' && (
           <SessionView patient={selectedPatient!} onBack={handleNewSession} />
+        )}
+        {view === 'past-session' && (
+          pastSessionLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <svg className="size-6 animate-spin text-accent" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          ) : pastSession ? (
+            <ResultsPanel
+              result={{
+                transcript: pastSession.transcript,
+                summary: pastSession.summary,
+                patient_id: pastSession.patient_id,
+                summary_id: pastSession.summary_id,
+              }}
+              patientName={pastSession.patient_name}
+              initialNotes={pastSession.clinician_notes ?? ''}
+              dateLabel={pastSession.date}
+            />
+          ) : null
         )}
       </main>
     </div>

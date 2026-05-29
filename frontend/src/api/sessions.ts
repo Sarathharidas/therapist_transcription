@@ -1,4 +1,4 @@
-import type { PastSession, SessionResult } from '../types';
+import type { PastSession, SessionDetail, SessionResult } from '../types';
 import { fetchWithAuth } from './base';
 
 export async function processSession(
@@ -21,6 +21,12 @@ export async function processSession(
   }
 
   return resp.json() as Promise<SessionResult>;
+}
+
+export async function getSession(summaryId: string): Promise<SessionDetail> {
+  const resp = await fetchWithAuth(`/api/sessions/${summaryId}`);
+  if (!resp.ok) throw new Error(`Failed to load session: ${resp.status}`);
+  return resp.json() as Promise<SessionDetail>;
 }
 
 export async function listRecentSessions(): Promise<PastSession[]> {

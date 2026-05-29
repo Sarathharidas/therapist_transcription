@@ -5,8 +5,10 @@ import type { SessionResult } from '../types';
 
 type Props = {
   result: SessionResult;
-  durationSeconds: number;
+  durationSeconds?: number;
   patientName: string;
+  initialNotes?: string;
+  dateLabel?: string;
 };
 
 function CopyButton({ text }: { text: string }) {
@@ -53,8 +55,8 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `${m} min ${s}s` : `${s}s`;
 }
 
-export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
-  const [notes, setNotes] = useState('');
+export function ResultsPanel({ result, durationSeconds, patientName, initialNotes = '', dateLabel }: Props) {
+  const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -94,7 +96,11 @@ export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
                 className="text-muted-foreground mt-2 text-xs"
                 style={{ fontFamily: 'var(--font-mono)' }}
               >
-                Recorded today · {formatDuration(durationSeconds)}
+                {dateLabel
+                  ? dateLabel
+                  : durationSeconds !== undefined
+                  ? `Recorded today · ${formatDuration(durationSeconds)}`
+                  : 'Past session'}
               </p>
             </div>
             <CopyButton text={result.transcript} />

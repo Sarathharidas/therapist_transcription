@@ -14,9 +14,11 @@ type Props = {
   clinician: Clinician;
   selectedPatient: Patient | null;
   onNewSession: () => void;
+  onSelectSession: (session: PastSession) => void;
+  activeSummaryId?: string;
 };
 
-export function Sidebar({ clinician, selectedPatient, onNewSession }: Props) {
+export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummaryId }: Props) {
   const [sessions, setSessions] = useState<PastSession[]>([]);
 
   useEffect(() => {
@@ -53,10 +55,11 @@ export function Sidebar({ clinician, selectedPatient, onNewSession }: Props) {
           <button
             key={s.id}
             disabled={s.id === 'sample'}
+            onClick={() => s.id !== 'sample' && onSelectSession(s)}
             className={`w-full text-left p-3 rounded-lg border transition-all ${
               s.id === 'sample'
                 ? 'border-dashed border-border opacity-50 cursor-default'
-                : selectedPatient?.name === s.patientName
+                : activeSummaryId === s.id
                 ? 'bg-card border-border'
                 : 'border-transparent hover:bg-card/60'
             }`}

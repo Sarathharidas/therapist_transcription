@@ -33,6 +33,16 @@ class RecentSessionOut(BaseModel):
     note_snippet: str
 
 
+class SessionDetailOut(BaseModel):
+    summary_id: str
+    patient_id: str
+    patient_name: str
+    transcript: str
+    summary: str
+    clinician_notes: Optional[str]
+    date: str
+
+
 @router.get("/recent", response_model=List[RecentSessionOut])
 def list_recent_sessions(
     db: Session = Depends(get_db),
@@ -66,6 +76,44 @@ def list_recent_sessions(
             note_snippet=snippet or "Session recorded",
         ))
     return result
+
+
+@router.get("/{summary_id}", response_model=SessionDetailOut)
+def get_session(
+    summary_id: str,
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Fetch full session detail for the summary view."""
+    row = (
+        db.query(Summary, Patient)
+        .join(Patient, Summary.patient_id == Patient.patient_id)
+        .filter(
+            Summary.summary_id == uuid.UUID(summary_id),
+            Patient.clinician_id == clinician.clinician_id,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    summary, patient = row
+    try:
+        raw = str(summary.created_at).split("+")[0].split(".")[0]
+        dt = datetime.fromisoformat(raw)
+        date_str = f"{dt.day} {dt.strftime('%b %Y').upper()}"
+    except Exception:
+        date_str = str(summary.created_at)[:10]
+
+    return SessionDetailOut(
+        summary_id=str(summary.summary_id),
+        patient_id=str(summary.patient_id),
+        patient_name=patient.name,
+        transcript=summary.transcription or "",
+        summary=summary.ai_summary or "",
+        clinician_notes=summary.clinician_notes,
+        date=date_str,
+    )
 
 
 @router.post("/process", response_model=SessionResult)
