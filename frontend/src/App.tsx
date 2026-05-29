@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import { UserPlus, LogOut } from 'lucide-react';
+import { LogOut, Menu, UserPlus } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { PatientSelect } from './components/PatientSelect';
 import { SessionView } from './components/SessionView';
@@ -20,6 +20,7 @@ function AppInner() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [pastSession, setPastSession] = useState<SessionDetail | null>(null);
   const [pastSessionLoading, setPastSessionLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Check for existing valid token on mount — skip entirely if no token stored
   useEffect(() => {
@@ -46,18 +47,21 @@ function AppInner() {
   const handleSelectPatient = (patient: Patient) => {
     setSelectedPatient(patient);
     setView('session');
+    setSidebarOpen(false);
   };
 
   const handleNewSession = () => {
     setView('select');
     setSelectedPatient(null);
     setPastSession(null);
+    setSidebarOpen(false);
   };
 
   const handleSelectSession = async (session: PastSession) => {
     setPastSessionLoading(true);
     setPastSession(null);
     setView('past-session');
+    setSidebarOpen(false);
     try {
       const detail = await getSession(session.id);
       setPastSession(detail);
@@ -88,27 +92,67 @@ function AppInner() {
   // Authenticated — show main app
   return (
     <div className="flex h-screen w-full bg-background text-foreground antialiased overflow-hidden">
-      <Sidebar
-        clinician={clinician}
-        selectedPatient={selectedPatient}
-        onNewSession={handleNewSession}
-        onSelectSession={handleSelectSession}
-        activeSummaryId={pastSession?.summary_id}
-      />
+
+      {/* ── Desktop sidebar (always visible on md+) ── */}
+      <div className="hidden md:flex shrink-0">
+        <Sidebar
+          clinician={clinician}
+          selectedPatient={selectedPatient}
+          onNewSession={handleNewSession}
+          onSelectSession={handleSelectSession}
+          activeSummaryId={pastSession?.summary_id}
+        />
+      </div>
+
+      {/* ── Mobile sidebar drawer ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-50 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-foreground/30 backdrop-blur-sm" />
+          {/* Drawer panel */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-72 flex flex-col z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Sidebar
+              clinician={clinician}
+              selectedPatient={selectedPatient}
+              onNewSession={handleNewSession}
+              onSelectSession={handleSelectSession}
+              activeSummaryId={pastSession?.summary_id}
+              onClose={() => setSidebarOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
-        <header className="h-14 px-8 border-b border-border flex items-center justify-between bg-card/40 shrink-0">
-          <div
-            className="text-[11px] uppercase tracking-widest text-muted-foreground"
-            style={{ fontFamily: 'var(--font-mono)' }}
-          >
-            {view === 'select'
-              ? 'New Session'
-              : `Session / ${selectedPatient?.name}`}
+        <header className="h-14 px-4 sm:px-8 border-b border-border flex items-center justify-between bg-card/40 shrink-0 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Hamburger (mobile only) */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden inline-flex items-center justify-center size-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+              aria-label="Open menu"
+            >
+              <Menu className="size-4" />
+            </button>
+
+            <div
+              className="text-[11px] uppercase tracking-widest text-muted-foreground truncate"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              {view === 'select'
+                ? 'New Session'
+                : `Session / ${selectedPatient?.name ?? ''}`}
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Clinician name */}
             <span
               className="text-[11px] text-muted-foreground hidden sm:block"
@@ -123,7 +167,8 @@ function AppInner() {
                 className="inline-flex items-center gap-2 px-3 py-2 bg-foreground text-background text-xs font-medium rounded-lg hover:opacity-90 transition-opacity"
               >
                 <UserPlus className="size-3.5" />
-                Add New Patient
+                <span className="hidden sm:inline">Add New Patient</span>
+                <span className="sm:hidden">Add</span>
               </button>
             )}
 
@@ -131,7 +176,7 @@ function AppInner() {
             <button
               onClick={handleLogout}
               title="Sign out"
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
             >
               <LogOut className="size-3.5" />
               <span className="hidden sm:inline">Sign out</span>

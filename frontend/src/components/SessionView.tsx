@@ -62,7 +62,6 @@ export function SessionView({ patient, onBack }: Props) {
     setError(null);
     activateStage(1);
     try {
-      // Advance stage labels with rough timing
       const t2 = setTimeout(() => activateStage(2), 5000);
       const t3 = setTimeout(() => activateStage(3), 15000);
 
@@ -97,7 +96,7 @@ export function SessionView({ patient, onBack }: Props) {
   };
 
   const handleStop = () => {
-    stop(); // triggers onstop → recorderState = 'stopped' → useEffect above
+    stop();
   };
 
   const handleNewSession = () => {
@@ -113,51 +112,54 @@ export function SessionView({ patient, onBack }: Props) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Session header */}
-      <div className="px-8 py-5 border-b border-border flex items-center justify-between bg-card shrink-0">
-        <div>
+      {/* ── Session header ── */}
+      <div className="px-4 sm:px-8 py-4 sm:py-5 border-b border-border flex items-center justify-between gap-3 bg-card shrink-0 flex-wrap">
+        {/* Patient name */}
+        <div className="min-w-0">
           <p
             className="text-[11px] uppercase tracking-widest text-muted-foreground"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
             Patient
           </p>
-          <h2 className="text-2xl mt-0.5" style={{ fontFamily: 'var(--font-serif)' }}>
+          <h2 className="text-xl sm:text-2xl mt-0.5 truncate" style={{ fontFamily: 'var(--font-serif)' }}>
             {patient.name}
           </h2>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Controls */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {phase !== 'processing' && (
             <button
               onClick={onBack}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
             >
-              ← Change patient
+              ← Change
             </button>
           )}
 
           {phase === 'ready' && (
             <button
               onClick={handleStart}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
             >
               <Mic className="size-4" />
-              Start Session
+              <span>Start Session</span>
             </button>
           )}
 
           {phase === 'recording' && (
-            <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-3 py-2">
-              <div className="size-2.5 bg-red-500 rounded-full animate-pulse" />
+            <div className="flex items-center gap-2 sm:gap-3 bg-secondary border border-border rounded-xl px-2.5 sm:px-3 py-2">
+              <div className="size-2.5 bg-red-500 rounded-full animate-pulse shrink-0" />
+              {/* "Recording" label — hide on very small screens */}
               <span
-                className="text-[10px] uppercase tracking-wider text-muted-foreground"
+                className="hidden xs:block text-[10px] uppercase tracking-wider text-muted-foreground"
                 style={{ fontFamily: 'var(--font-mono)' }}
               >
                 Recording
               </span>
-              {/* Mini waveform */}
-              <div className="flex gap-0.5 h-4 items-end">
+              {/* Waveform — desktop only */}
+              <div className="hidden sm:flex gap-0.5 h-4 items-end">
                 {[2, 4, 3, 4, 2, 3, 4, 3, 2, 4].map((h, i) => (
                   <div
                     key={i}
@@ -174,7 +176,7 @@ export function SessionView({ patient, onBack }: Props) {
               </span>
               <button
                 onClick={handleStop}
-                className="ml-2 px-3 py-1.5 bg-foreground text-background text-xs font-medium rounded-lg hover:opacity-90 transition-opacity"
+                className="ml-1 px-2.5 sm:px-3 py-1.5 bg-foreground text-background text-xs font-medium rounded-lg hover:opacity-90 transition-opacity"
               >
                 Stop
               </button>
@@ -182,20 +184,22 @@ export function SessionView({ patient, onBack }: Props) {
           )}
 
           {phase === 'done' && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={handleNewSession}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-secondary/70 transition-colors"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-secondary/70 transition-colors"
               >
                 <Check className="size-3.5" />
-                Session complete
+                <span className="hidden sm:inline">Session complete</span>
+                <span className="sm:hidden">Done</span>
               </button>
               <button
                 onClick={handleStart}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-accent text-accent-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity"
               >
                 <UserPlus className="size-3.5" />
-                New recording
+                <span className="hidden sm:inline">New recording</span>
+                <span className="sm:hidden">New</span>
               </button>
             </div>
           )}
@@ -204,7 +208,7 @@ export function SessionView({ patient, onBack }: Props) {
 
       {/* Error banner */}
       {error && (
-        <div className="mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+        <div className="mx-4 sm:mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           ⚠️ {error}
         </div>
       )}
@@ -233,12 +237,12 @@ function RecordingIdleView({
   onStop: () => void;
 }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-8">
+    <div className="flex-1 flex items-center justify-center px-6 sm:px-8">
       <div className="text-center max-w-md">
         <button
           type="button"
           onClick={phase === 'ready' ? onStart : onStop}
-          className={`group relative mx-auto size-24 rounded-full flex items-center justify-center mb-8 transition-all hover:scale-105 active:scale-95 ${
+          className={`group relative mx-auto size-20 sm:size-24 rounded-full flex items-center justify-center mb-6 sm:mb-8 transition-all hover:scale-105 active:scale-95 ${
             phase === 'recording'
               ? 'bg-red-500/10 hover:bg-red-500/20'
               : 'bg-accent/10 hover:bg-accent/20'
@@ -248,16 +252,16 @@ function RecordingIdleView({
             <span className="absolute inset-0 rounded-full bg-red-500/20 animate-ping" />
           )}
           <Mic
-            className={`size-10 relative ${
+            className={`size-8 sm:size-10 relative ${
               phase === 'recording' ? 'text-red-500' : 'text-accent'
             }`}
           />
         </button>
 
-        <h2 className="text-3xl mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
+        <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
           {phase === 'recording' ? 'Listening…' : 'Ready when you are'}
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground text-sm sm:text-base px-4">
           {phase === 'recording'
             ? 'Speak naturally. The session is being recorded privately.'
             : `Tap the microphone to start recording with ${patientName}.`}
@@ -275,7 +279,7 @@ function ProcessingView({
   patientName: string;
 }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-8">
+    <div className="flex-1 flex items-center justify-center px-6 sm:px-8">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 bg-accent/10 px-3 py-1 rounded-full mb-4">

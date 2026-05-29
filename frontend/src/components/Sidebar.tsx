@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, X } from 'lucide-react';
 import { listRecentSessions } from '../api/sessions';
 import type { Clinician, PastSession, Patient } from '../types';
 
@@ -16,9 +16,10 @@ type Props = {
   onNewSession: () => void;
   onSelectSession: (session: PastSession) => void;
   activeSummaryId?: string;
+  onClose?: () => void;
 };
 
-export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummaryId }: Props) {
+export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummaryId, onClose }: Props) {
   const [sessions, setSessions] = useState<PastSession[]>([]);
 
   useEffect(() => {
@@ -28,9 +29,9 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
   const displayed = sessions.length > 0 ? sessions : [SAMPLE_SESSION];
 
   return (
-    <aside className="w-72 bg-sidebar border-r border-border flex flex-col shrink-0">
+    <aside className="w-72 bg-sidebar border-r border-border flex flex-col h-full">
       {/* Logo */}
-      <div className="p-6 border-b border-border">
+      <div className="p-6 border-b border-border flex items-center justify-between">
         <button
           onClick={onNewSession}
           className="flex items-center gap-3 hover:opacity-70 transition-opacity"
@@ -43,16 +44,28 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
             Aura Clinical
           </span>
         </button>
-        <p
-          className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2"
-          style={{ fontFamily: 'var(--font-mono)' }}
-        >
-          {clinician.name}
-        </p>
+
+        {/* Close button — only shown when rendered as mobile drawer */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="size-4" />
+          </button>
+        )}
       </div>
 
+      <p
+        className="px-6 pt-3 text-[10px] uppercase tracking-widest text-muted-foreground"
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
+        {clinician.name}
+      </p>
+
       {/* Recent notes */}
-      <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto p-4 space-y-1 mt-2">
         <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-4">
           Recent Notes
         </div>

@@ -78,11 +78,13 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden">
-      {/* Transcript */}
-      <section className="flex-[1.2] overflow-y-auto p-12 bg-card border-r border-border animate-fade-in">
+    // On mobile: single column, scrollable. On large screens: two columns, each scrollable.
+    <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+
+      {/* ── Transcript ── */}
+      <section className="lg:flex-[1.2] lg:overflow-y-auto p-6 sm:p-10 lg:p-12 bg-card border-b lg:border-b-0 lg:border-r border-border animate-fade-in">
         <div className="max-w-[65ch] mx-auto">
-          <div className="mb-10 flex items-start justify-between">
+          <div className="mb-8 lg:mb-10 flex items-start justify-between">
             <div>
               <span
                 className="text-[11px] tracking-widest text-muted-foreground uppercase"
@@ -90,7 +92,7 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
               >
                 Full Transcript
               </span>
-              <h2 className="text-4xl mt-3" style={{ fontFamily: 'var(--font-serif)' }}>
+              <h2 className="text-3xl lg:text-4xl mt-3" style={{ fontFamily: 'var(--font-serif)' }}>
                 {patientName}
               </h2>
               <p
@@ -114,12 +116,12 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
         </div>
       </section>
 
-      {/* Summary + Notes */}
+      {/* ── Summary + Notes ── */}
       <section
-        className="flex-1 bg-background overflow-y-auto p-12 animate-fade-in"
+        className="lg:flex-1 bg-background lg:overflow-y-auto p-6 sm:p-10 lg:p-12 animate-fade-in"
         style={{ animationDelay: '200ms' }}
       >
-        <div className="max-w-md">
+        <div className="max-w-md mx-auto lg:mx-0">
           {/* AI badge */}
           <div className="mb-8">
             <div className="inline-flex items-center gap-2 bg-accent/10 px-3 py-1 rounded-full mb-4">

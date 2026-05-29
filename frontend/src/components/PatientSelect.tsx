@@ -30,8 +30,8 @@ function AddPatientDialog({ onClose, onAdd }: DialogProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md p-8 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm px-4">
+      <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md p-6 sm:p-8 relative">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 size-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground"
@@ -109,7 +109,7 @@ export function PatientSelect({ onSelect }: Props) {
   );
 
   const handleAddPatient = async (name: string) => {
-    const newPatient = await createPatient(name); // let errors bubble up to dialog
+    const newPatient = await createPatient(name);
     setPatients((prev) => [newPatient, ...prev]);
     setAddOpen(false);
     onSelect(newPatient);
@@ -124,16 +124,16 @@ export function PatientSelect({ onSelect }: Props) {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center px-8">
+    <div className="flex-1 flex items-center justify-center px-5 sm:px-8 py-8">
       <div className="w-full max-w-xl">
-        <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-6"
+        <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-4 sm:mb-6"
            style={{ fontFamily: 'var(--font-mono)' }}>
           Step 01 / Begin
         </p>
-        <h1 className="text-5xl leading-tight mb-4" style={{ fontFamily: 'var(--font-serif)' }}>
+        <h1 className="text-4xl sm:text-5xl leading-tight mb-3 sm:mb-4" style={{ fontFamily: 'var(--font-serif)' }}>
           Let's get started.
         </h1>
-        <p className="text-muted-foreground text-lg mb-12">
+        <p className="text-muted-foreground text-base sm:text-lg mb-8 sm:mb-12">
           Add your patient's name to open a new session.
         </p>
 
@@ -143,7 +143,7 @@ export function PatientSelect({ onSelect }: Props) {
         </label>
 
         <div className="relative">
-          <div className="flex items-center gap-3 bg-card border border-border rounded-xl p-2 pl-4 shadow-sm focus-within:border-accent/60 transition-colors">
+          <div className="flex items-center gap-2 sm:gap-3 bg-card border border-border rounded-xl p-2 pl-3 sm:pl-4 shadow-sm focus-within:border-accent/60 transition-colors">
             {loading
               ? <Loader2 className="size-4 text-muted-foreground shrink-0 animate-spin" />
               : <Search className="size-4 text-muted-foreground shrink-0" />
@@ -155,21 +155,21 @@ export function PatientSelect({ onSelect }: Props) {
               onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
               onFocus={() => setOpen(true)}
               onKeyDown={(e) => { if (e.key === 'Enter' && query.trim()) void handleContinue(); }}
-              placeholder={loading ? 'Loading patients…' : 'Select existing or type a new name…'}
+              placeholder={loading ? 'Loading patients…' : 'Select or type a name…'}
               className="flex-1 bg-transparent text-base focus:outline-none placeholder:text-muted-foreground/60 min-w-0 disabled:opacity-50"
             />
             <button
               disabled={!query.trim() || loading}
               onClick={() => void handleContinue()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-accent text-accent-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
             >
-              Continue
+              <span className="hidden sm:inline">Continue</span>
               <ArrowRight className="size-3.5" />
             </button>
           </div>
 
           {open && !loading && (
-            <div className="absolute z-10 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+            <div className="absolute z-10 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-60 sm:max-h-72 overflow-y-auto">
               {filtered.length > 0 ? (
                 filtered.map((p) => (
                   <button
@@ -207,8 +207,8 @@ export function PatientSelect({ onSelect }: Props) {
           )}
         </div>
 
-        <div className="flex items-center justify-between mt-6">
-          <p className="text-xs text-muted-foreground">
+        <div className="flex items-center justify-between mt-5 sm:mt-6 gap-3">
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Press{' '}
             <kbd className="px-1.5 py-0.5 bg-secondary border border-border rounded text-[10px]">
               Enter
@@ -217,7 +217,7 @@ export function PatientSelect({ onSelect }: Props) {
           </p>
           <button
             onClick={() => { setAddOpen(true); setOpen(false); }}
-            className="inline-flex items-center gap-2 px-3 py-2 bg-foreground text-background text-xs font-medium rounded-lg hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 px-3 py-2 bg-foreground text-background text-xs font-medium rounded-lg hover:opacity-90 transition-opacity ml-auto"
           >
             <UserPlus className="size-3.5" />
             Add New Patient
