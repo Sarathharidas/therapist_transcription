@@ -116,7 +116,7 @@ function AppInner() {
 
   // Authenticated — show main app
   return (
-    <div className="flex h-screen w-full bg-background text-foreground antialiased overflow-hidden">
+    <div className="flex h-dvh w-full bg-background text-foreground antialiased overflow-hidden">
 
       {/* ── Desktop sidebar (always visible on md+) ── */}
       <div className="hidden md:flex shrink-0">

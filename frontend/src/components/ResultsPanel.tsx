@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, Loader2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, Loader2 } from 'lucide-react';
 import { saveNotes } from '../api/sessions';
 import type { SessionResult } from '../types';
 
@@ -55,11 +55,15 @@ function formatDuration(seconds: number): string {
   return m > 0 ? `${m} min ${s}s` : `${s}s`;
 }
 
+// Which section is currently expanded to fill the space
+type Focus = 'both' | 'transcript' | 'summary';
+
 export function ResultsPanel({ result, durationSeconds, patientName, initialNotes = '', dateLabel }: Props) {
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [focus, setFocus] = useState<Focus>('both');
 
   const handleSave = async () => {
     setSaving(true);
@@ -76,96 +80,109 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
     }
   };
 
+  // Click transcript header → focus transcript (collapses summary)
+  const onTranscriptHeaderClick = () =>
+    setFocus((f) => (f === 'transcript' ? 'both' : 'transcript'));
+
+  // Click summary header → focus summary (collapses transcript)
+  const onSummaryHeaderClick = () =>
+    setFocus((f) => (f === 'summary' ? 'both' : 'summary'));
+
+  const transcriptVisible = focus !== 'summary';
+  const summaryVisible = focus !== 'transcript';
+
   return (
-    /**
-     * Root: splits the available space.
-     *
-     * Mobile  (flex-col) — three stacked rows, each with a pinned header + independent scroll body.
-     * Desktop (lg:flex-row) — left = Transcript column, right = Summary + Notes column.
-     *
-     * The `min-h-0` on every flex child is required: without it, flex items default to
-     * `min-height: auto` and expand to fit content, breaking overflow-y-auto.
-     */
     <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
-      {/* ════════════════════════════════
-          LEFT / TOP — TRANSCRIPT
-          ════════════════════════════════ */}
-      <section className="flex-1 min-h-0 lg:flex-[1.2] flex flex-col bg-card border-b lg:border-b-0 lg:border-r border-border animate-fade-in">
+      {/* ══════════════════════════════
+          TRANSCRIPT
+          ══════════════════════════════ */}
+      {transcriptVisible && (
+        <section className="flex-1 min-h-0 lg:flex-[1.2] flex flex-col bg-card border-b lg:border-b-0 lg:border-r border-border animate-fade-in">
 
-        {/* Pinned section header */}
-        <div className="shrink-0 px-5 sm:px-8 lg:px-12 pt-5 sm:pt-8 lg:pt-10 pb-4 border-b border-border/50">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span
-                className="text-[11px] tracking-widest text-muted-foreground uppercase"
-                style={{ fontFamily: 'var(--font-mono)' }}
-              >
-                Full Transcript
-              </span>
-              <h2 className="text-xl sm:text-2xl lg:text-4xl mt-1 lg:mt-3" style={{ fontFamily: 'var(--font-serif)' }}>
-                {patientName}
-              </h2>
-              <p className="text-muted-foreground mt-1 text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
-                {dateLabel
-                  ? dateLabel
-                  : durationSeconds !== undefined
-                  ? `Recorded today · ${formatDuration(durationSeconds)}`
-                  : 'Past session'}
-              </p>
+          {/* Pinned, clickable header */}
+          <button
+            onClick={onTranscriptHeaderClick}
+            className="shrink-0 w-full text-left px-5 sm:px-8 lg:px-12 pt-5 sm:pt-8 lg:pt-10 pb-4 border-b border-border/50 hover:bg-secondary/30 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="text-[11px] tracking-widest text-muted-foreground uppercase"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    Full Transcript
+                  </span>
+                  {/* Chevron — shows collapse direction */}
+                  {focus === 'transcript'
+                    ? <ChevronRight className="size-3.5 text-muted-foreground" />
+                    : <ChevronDown className="size-3.5 text-muted-foreground" />}
+                </div>
+                <h2 className="text-xl sm:text-2xl lg:text-4xl mt-1 lg:mt-3 truncate" style={{ fontFamily: 'var(--font-serif)' }}>
+                  {patientName}
+                </h2>
+                <p className="text-muted-foreground mt-1 text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
+                  {dateLabel
+                    ? dateLabel
+                    : durationSeconds !== undefined
+                    ? `Recorded today · ${formatDuration(durationSeconds)}`
+                    : 'Past session'}
+                </p>
+              </div>
+              <CopyButton text={result.transcript} />
             </div>
-            <CopyButton text={result.transcript} />
+          </button>
+
+          {/* Independently scrollable body */}
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 lg:px-12 py-4 lg:py-8">
+            <div
+              className="max-w-[65ch] lg:mx-auto text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90"
+              dangerouslySetInnerHTML={{ __html: renderTranscript(result.transcript) }}
+            />
           </div>
-        </div>
 
-        {/* Independently scrollable transcript body */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 lg:px-12 py-4 lg:py-8">
-          <div
-            className="max-w-[65ch] lg:mx-auto text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90"
-            dangerouslySetInnerHTML={{ __html: renderTranscript(result.transcript) }}
-          />
-        </div>
+        </section>
+      )}
 
-      </section>
-
-      {/* ════════════════════════════════
-          RIGHT / BOTTOM — SUMMARY + NOTES
-          This column itself is flex-col so that:
-            • Summary header is pinned
-            • Summary text scrolls independently
-            • Clinician Notes card is always pinned at the bottom
-          ════════════════════════════════ */}
+      {/* ══════════════════════════════
+          RIGHT COLUMN — SUMMARY + NOTES
+          ══════════════════════════════ */}
       <div
         className="flex-1 min-h-0 flex flex-col bg-background animate-fade-in"
         style={{ animationDelay: '150ms' }}
       >
 
         {/* ── SESSION SUMMARY ── */}
-        <div className="flex-1 min-h-0 flex flex-col border-b border-border">
+        {summaryVisible && (
+          <div className="flex-1 min-h-0 flex flex-col border-b border-border">
 
-          {/* Pinned summary header */}
-          <div className="shrink-0 px-5 sm:px-8 lg:px-12 pt-5 sm:pt-8 lg:pt-10 pb-4 border-b border-border/50">
-            <div className="inline-flex items-center gap-2 bg-accent/10 px-3 py-1 rounded-full mb-3">
-              <div className="size-1.5 bg-accent rounded-full" />
-              <span className="text-[10px] font-bold text-accent uppercase tracking-wider">
-                AI Synthesis
-              </span>
+            {/* Pinned, clickable header */}
+            <button
+              onClick={onSummaryHeaderClick}
+              className="shrink-0 w-full text-left px-5 sm:px-8 lg:px-12 pt-5 sm:pt-8 lg:pt-10 pb-4 border-b border-border/50 hover:bg-secondary/30 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-semibold">Session Summary</h3>
+                  {focus === 'summary'
+                    ? <ChevronRight className="size-3.5 text-muted-foreground" />
+                    : <ChevronDown className="size-3.5 text-muted-foreground" />}
+                </div>
+                <CopyButton text={result.summary} />
+              </div>
+            </button>
+
+            {/* Independently scrollable summary text */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 lg:px-12 py-4">
+              <div
+                className="text-sm leading-relaxed text-foreground/90"
+                dangerouslySetInnerHTML={{ __html: renderSummary(result.summary) }}
+              />
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base sm:text-lg font-semibold">Session Summary</h3>
-              <CopyButton text={result.summary} />
-            </div>
-          </div>
 
-          {/* Independently scrollable summary text */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 lg:px-12 py-4">
-            <div
-              className="text-sm leading-relaxed text-foreground/90"
-              dangerouslySetInnerHTML={{ __html: renderSummary(result.summary) }}
-            />
           </div>
-
-        </div>
+        )}
 
         {/* ── CLINICIAN NOTES — always pinned at bottom ── */}
         <div className="shrink-0 px-5 sm:px-8 lg:px-12 py-4 sm:py-5 lg:py-8">
