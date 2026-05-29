@@ -22,3 +22,15 @@ export async function processSession(
 
   return resp.json() as Promise<SessionResult>;
 }
+
+export async function saveNotes(summaryId: string, notes: string): Promise<void> {
+  const resp = await fetchWithAuth(`/api/sessions/${summaryId}/notes`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notes }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `Error ${resp.status}`);
+  }
+}

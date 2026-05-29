@@ -6,7 +6,7 @@ import os
 import tempfile
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from google.genai.errors import ClientError
 from sqlalchemy.orm import Session
 
@@ -80,3 +80,29 @@ async def process_session(
         patient_id=patient_id,
         summary_id=str(summary_row.summary_id),
     )
+
+
+@router.patch("/{summary_id}/notes", status_code=200)
+def save_notes(
+    summary_id: str,
+    notes: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Save clinician notes for a session summary."""
+    # Verify this summary belongs to a patient of the authenticated clinician
+    summary_row = (
+        db.query(Summary)
+        .join(Patient, Summary.patient_id == Patient.patient_id)
+        .filter(
+            Summary.summary_id == uuid.UUID(summary_id),
+            Patient.clinician_id == clinician.clinician_id,
+        )
+        .first()
+    )
+    if not summary_row:
+        raise HTTPException(status_code=404, detail="Summary not found")
+
+    summary_row.clinician_notes = notes
+    db.commit()
+    return {"ok": True}

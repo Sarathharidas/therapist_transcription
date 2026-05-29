@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Loader2 } from 'lucide-react';
+import { saveNotes } from '../api/sessions';
 import type { SessionResult } from '../types';
 
 type Props = {
@@ -54,11 +55,23 @@ function formatDuration(seconds: number): string {
 
 export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    if (!notes.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveNotes(result.summary_id, notes);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save notes.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -142,11 +155,21 @@ export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
               placeholder="Write your observations, reflections, or next steps…"
               className="w-full min-h-[140px] bg-background border border-border rounded-lg p-3 text-sm leading-relaxed resize-y focus:outline-none focus:ring-1 focus:ring-accent/40 placeholder:text-muted-foreground/60"
             />
+            {saveError && (
+              <p className="mt-2 text-xs text-red-600">⚠️ {saveError}</p>
+            )}
             <button
               onClick={handleSave}
-              className="w-full mt-3 py-2 bg-secondary hover:bg-secondary/70 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+              disabled={saving || !notes.trim()}
+              className="w-full mt-3 py-2 bg-secondary hover:bg-secondary/70 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
             >
-              {saved ? <><Check className="size-3.5 text-green-600" /> Saved</> : 'Save Notes'}
+              {saving ? (
+                <><Loader2 className="size-3.5 animate-spin" /> Saving…</>
+              ) : saved ? (
+                <><Check className="size-3.5 text-green-600" /> Saved</>
+              ) : (
+                'Save Notes'
+              )}
             </button>
           </div>
         </div>

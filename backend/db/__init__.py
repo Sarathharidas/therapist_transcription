@@ -65,6 +65,7 @@ class Summary(Base):
     )
     ai_summary = Column(Text, nullable=True)
     transcription = Column(Text, nullable=True)
+    clinician_notes = Column(Text, nullable=True)
     created_at = Column(
         Text,
         nullable=False,
