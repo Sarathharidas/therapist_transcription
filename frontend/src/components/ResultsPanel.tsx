@@ -60,8 +60,8 @@ export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
-    if (!notes.trim()) return;
     setSaving(true);
+    setSaved(false);
     setSaveError(null);
     try {
       await saveNotes(result.summary_id, notes);
@@ -160,7 +160,7 @@ export function ResultsPanel({ result, durationSeconds, patientName }: Props) {
             )}
             <button
               onClick={handleSave}
-              disabled={saving || !notes.trim()}
+              disabled={saving}
               className="w-full mt-3 py-2 bg-secondary hover:bg-secondary/70 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
             >
               {saving ? (
