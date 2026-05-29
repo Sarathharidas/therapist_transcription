@@ -33,10 +33,15 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
       <div className="p-6 border-b border-border">
         <button
           onClick={onNewSession}
-          className="text-2xl italic block text-left hover:opacity-70 transition-opacity"
-          style={{ fontFamily: 'var(--font-serif)' }}
+          className="flex items-center gap-3 hover:opacity-70 transition-opacity"
         >
-          Aura Clinical
+          <img src="/aura-logo.png" alt="Aura Clinical" className="size-8 rounded-lg object-contain" />
+          <span
+            className="text-2xl italic"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            Aura Clinical
+          </span>
         </button>
         <p
           className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2"
