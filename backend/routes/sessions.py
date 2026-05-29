@@ -6,7 +6,8 @@ import os
 import tempfile
 import uuid
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from google.genai.errors import ClientError
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,10 @@ from backend.services.auth import get_current_clinician
 from backend.services.gemini import get_service
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+class NotesUpdate(BaseModel):
+    notes: str
 
 
 @router.post("/process", response_model=SessionResult)
@@ -85,12 +90,13 @@ async def process_session(
 @router.patch("/{summary_id}/notes", status_code=200)
 def save_notes(
     summary_id: str,
-    notes: str = Body(..., embed=True),
+    body: NotesUpdate,
     db: Session = Depends(get_db),
     clinician: Clinician = Depends(get_current_clinician),
 ):
     """Save clinician notes for a session summary."""
-    # Verify this summary belongs to a patient of the authenticated clinician
+    print(f"[notes] Saving notes for summary={summary_id} clinician={clinician.clinician_id}")
+
     summary_row = (
         db.query(Summary)
         .join(Patient, Summary.patient_id == Patient.patient_id)
@@ -100,9 +106,13 @@ def save_notes(
         )
         .first()
     )
+
     if not summary_row:
+        print(f"[notes] Summary {summary_id} not found for clinician {clinician.clinician_id}")
         raise HTTPException(status_code=404, detail="Summary not found")
 
-    summary_row.clinician_notes = notes
+    summary_row.clinician_notes = body.notes
     db.commit()
+    db.refresh(summary_row)
+    print(f"[notes] Saved {len(body.notes)} chars to summary {summary_id}")
     return {"ok": True}
