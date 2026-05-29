@@ -35,6 +35,13 @@ export type SessionDetail = {
   date: string;
 };
 
+export type JobStatus = {
+  job_id: string;
+  status: 'pending' | 'uploading' | 'transcribing' | 'summarizing' | 'complete' | 'failed';
+  summary_id: string | null;
+  error: string | null;
+};
+
 export type AppView = 'select' | 'session' | 'past-session';
 export type SessionPhase = 'ready' | 'recording' | 'processing' | 'done';
 

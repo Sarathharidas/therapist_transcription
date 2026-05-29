@@ -1,6 +1,9 @@
 """
 Gemini service — file upload, transcription, clinical summary.
 Isolated from HTTP layer so it can be called from any context.
+
+Methods are split into individual steps so the job runner can
+update status between each phase.
 """
 
 import os
@@ -77,21 +80,24 @@ class GeminiService:
                     raise
         raise RuntimeError("Unreachable")
 
-    def process_audio(self, audio_path: str) -> tuple[str, str]:
+    # ── Individual pipeline steps ──────────────────────────────────────────
+
+    def upload_file(self, audio_path: str, mime_type: str = "audio/webm") -> object:
         """
-        Upload audio → transcribe → summarise.
-        Returns (transcript, summary).
+        Upload audio to Gemini Files API and wait for ACTIVE state.
+        Returns the file object (has .name and .uri attributes).
+        Raises RuntimeError if the file fails to process or times out.
         """
         size_kb = Path(audio_path).stat().st_size // 1024
-        print(f"[gemini] Uploading {size_kb} KB…")
+        print(f"[gemini] Uploading {size_kb} KB ({mime_type})…")
 
         audio_file = self.client.files.upload(
             file=audio_path,
-            config={"mime_type": "audio/webm", "display_name": "therapy_session"},
+            config={"mime_type": mime_type, "display_name": "therapy_session"},
         )
 
-        # Wait for ACTIVE state
-        for _ in range(30):
+        # Wait up to 60 seconds for ACTIVE state (large files may need more time)
+        for _ in range(60):
             info = self.client.files.get(name=audio_file.name)
             if info.state.name == "ACTIVE":
                 break
@@ -99,35 +105,53 @@ class GeminiService:
                 raise RuntimeError("Gemini file processing failed")
             time.sleep(1)
         else:
-            raise RuntimeError("Gemini file timed out")
+            raise RuntimeError("Gemini file timed out waiting for ACTIVE state")
 
         print(f"[gemini] File ready — {audio_file.uri}")
+        return audio_file
 
+    def transcribe(self, audio_file: object, mime_type: str = "audio/webm") -> str:
+        """Generate transcript from an uploaded Gemini file."""
+        print("[gemini] Transcribing…")
+        transcript = self._generate([
+            TRANSCRIPT_PROMPT,
+            genai.types.Part.from_uri(
+                file_uri=audio_file.uri,
+                mime_type=mime_type,
+            ),
+        ])
+        print(f"[gemini] Transcript: {len(transcript)} chars")
+        return transcript
+
+    def summarize(self, transcript: str) -> str:
+        """Generate plain-language clinical summary from transcript text."""
+        print("[gemini] Summarising…")
+        summary = self._generate(SUMMARY_TEMPLATE.format(transcript=transcript))
+        print("[gemini] Summary done.")
+        return summary
+
+    def delete_file(self, audio_file: object) -> None:
+        """Delete a file from the Gemini Files API. Silently ignores errors."""
         try:
-            # Step 1: Transcribe
-            print("[gemini] Transcribing…")
-            transcript = self._generate([
-                TRANSCRIPT_PROMPT,
-                genai.types.Part.from_uri(
-                    file_uri=audio_file.uri,
-                    mime_type="audio/webm",
-                ),
-            ])
-            print(f"[gemini] Transcript: {len(transcript)} chars. Summarising…")
+            self.client.files.delete(name=audio_file.name)
+        except Exception:
+            pass
 
-            # Step 2: Plain summary
-            summary = self._generate(
-                SUMMARY_TEMPLATE.format(transcript=transcript)
-            )
-            print("[gemini] Done.")
+    # ── Convenience one-shot wrapper ───────────────────────────────────────
 
+    def process_audio(self, audio_path: str, mime_type: str = "audio/webm") -> tuple:
+        """
+        One-shot: upload → transcribe → summarise → delete Gemini file.
+        Returns (transcript, summary).
+        Used by the legacy synchronous path; the async job runner calls
+        the individual methods directly to update status between steps.
+        """
+        audio_file = self.upload_file(audio_path, mime_type)
+        try:
+            transcript = self.transcribe(audio_file, mime_type)
+            summary = self.summarize(transcript)
         finally:
-            # Always clean up the remote file
-            try:
-                self.client.files.delete(name=audio_file.name)
-            except Exception:
-                pass
-
+            self.delete_file(audio_file)
         return transcript, summary
 
 
