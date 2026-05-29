@@ -1,20 +1,30 @@
+import { useEffect, useState } from 'react';
 import { Lock } from 'lucide-react';
-import type { PastSession, Patient } from '../types';
+import { listRecentSessions } from '../api/sessions';
+import type { Clinician, PastSession, Patient } from '../types';
 
-const PAST_SESSIONS: PastSession[] = [
-  { id: 's1', patientName: 'Julianna Sterling', date: '14 MAR 2025', noteSnippet: 'Generalised anxiety follow-up…' },
-  { id: 's2', patientName: 'Marcus Thorne',     date: '12 MAR 2025', noteSnippet: 'Initial intake: Sleep hygiene…' },
-  { id: 's3', patientName: 'Elena Rossi',        date: '11 MAR 2025', noteSnippet: 'CBT Session 4: Reframing…' },
-  { id: 's4', patientName: 'David Park',         date: '08 MAR 2025', noteSnippet: 'Grief processing — week 3…' },
-  { id: 's5', patientName: 'Arthur Pemberton',   date: '05 MAR 2025', noteSnippet: 'Workplace transition anxiety…' },
-];
+const SAMPLE_SESSION: PastSession = {
+  id: 'sample',
+  patientName: 'Sample Patient',
+  date: 'SAMPLE',
+  noteSnippet: 'Your session notes will appear here after recording…',
+};
 
 type Props = {
+  clinician: Clinician;
   selectedPatient: Patient | null;
   onNewSession: () => void;
 };
 
-export function Sidebar({ selectedPatient, onNewSession }: Props) {
+export function Sidebar({ clinician, selectedPatient, onNewSession }: Props) {
+  const [sessions, setSessions] = useState<PastSession[]>([]);
+
+  useEffect(() => {
+    listRecentSessions().then(setSessions).catch(() => setSessions([]));
+  }, []);
+
+  const displayed = sessions.length > 0 ? sessions : [SAMPLE_SESSION];
+
   return (
     <aside className="w-72 bg-sidebar border-r border-border flex flex-col shrink-0">
       {/* Logo */}
@@ -30,7 +40,7 @@ export function Sidebar({ selectedPatient, onNewSession }: Props) {
           className="text-[10px] uppercase tracking-widest text-muted-foreground mt-2"
           style={{ fontFamily: 'var(--font-mono)' }}
         >
-          Authenticated / Dr. Aris
+          {clinician.name}
         </p>
       </div>
 
@@ -39,11 +49,14 @@ export function Sidebar({ selectedPatient, onNewSession }: Props) {
         <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-4">
           Recent Notes
         </div>
-        {PAST_SESSIONS.map((s) => (
+        {displayed.map((s) => (
           <button
             key={s.id}
+            disabled={s.id === 'sample'}
             className={`w-full text-left p-3 rounded-lg border transition-all ${
-              selectedPatient?.name === s.patientName
+              s.id === 'sample'
+                ? 'border-dashed border-border opacity-50 cursor-default'
+                : selectedPatient?.name === s.patientName
                 ? 'bg-card border-border'
                 : 'border-transparent hover:bg-card/60'
             }`}

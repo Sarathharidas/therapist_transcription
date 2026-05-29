@@ -1,10 +1,12 @@
 """
-Session routes — POST /api/sessions/process
+Session routes — POST /api/sessions/process, GET /api/sessions/recent
 """
 
 import os
 import tempfile
 import uuid
+from datetime import datetime
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -22,6 +24,48 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 class NotesUpdate(BaseModel):
     notes: str
+
+
+class RecentSessionOut(BaseModel):
+    summary_id: str
+    patient_name: str
+    date: str
+    note_snippet: str
+
+
+@router.get("/recent", response_model=List[RecentSessionOut])
+def list_recent_sessions(
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Return the 20 most recent sessions for the authenticated clinician."""
+    rows = (
+        db.query(Summary, Patient)
+        .join(Patient, Summary.patient_id == Patient.patient_id)
+        .filter(Patient.clinician_id == clinician.clinician_id)
+        .order_by(Summary.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    result = []
+    for summary, patient in rows:
+        try:
+            raw = str(summary.created_at).split("+")[0].split(".")[0]
+            dt = datetime.fromisoformat(raw)
+            date_str = f"{dt.day} {dt.strftime('%b %Y').upper()}"
+        except Exception:
+            date_str = str(summary.created_at)[:10]
+
+        text = summary.ai_summary or ""
+        snippet = text[:60] + ("…" if len(text) > 60 else "")
+
+        result.append(RecentSessionOut(
+            summary_id=str(summary.summary_id),
+            patient_name=patient.name,
+            date=date_str,
+            note_snippet=snippet or "Session recorded",
+        ))
+    return result
 
 
 @router.post("/process", response_model=SessionResult)

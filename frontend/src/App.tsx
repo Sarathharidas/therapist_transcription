@@ -69,7 +69,7 @@ function AppInner() {
   // Authenticated — show main app
   return (
     <div className="flex h-screen w-full bg-background text-foreground antialiased overflow-hidden">
-      <Sidebar selectedPatient={selectedPatient} onNewSession={handleNewSession} />
+      <Sidebar clinician={clinician} selectedPatient={selectedPatient} onNewSession={handleNewSession} />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
