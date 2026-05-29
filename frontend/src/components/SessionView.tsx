@@ -8,6 +8,7 @@ import type { Patient, SessionPhase, SessionResult } from '../types';
 type Props = {
   patient: Patient;
   onBack: () => void;
+  onSessionComplete?: (result: SessionResult) => void;
 };
 
 type ProcessingStageState = 'pending' | 'active' | 'done';
@@ -18,7 +19,7 @@ const STAGES = [
   { id: 3, label: 'Writing clinical notes' },
 ];
 
-export function SessionView({ patient, onBack }: Props) {
+export function SessionView({ patient, onBack, onSessionComplete }: Props) {
   const { state: recorderState, blob, start, stop, reset } = useRecorder();
   const [phase, setPhase] = useState<SessionPhase>('ready');
   const [elapsed, setElapsed] = useState(0);
@@ -72,6 +73,7 @@ export function SessionView({ patient, onBack }: Props) {
       setStageStates(['done', 'done', 'done']);
       setResult(data);
       setPhase('done');
+      onSessionComplete?.(data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setError(msg === 'quota_exceeded'

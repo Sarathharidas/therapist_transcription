@@ -17,14 +17,15 @@ type Props = {
   onSelectSession: (session: PastSession) => void;
   activeSummaryId?: string;
   onClose?: () => void;
+  refreshKey?: number;
 };
 
-export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummaryId, onClose }: Props) {
+export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummaryId, onClose, refreshKey }: Props) {
   const [sessions, setSessions] = useState<PastSession[]>([]);
 
   useEffect(() => {
     listRecentSessions().then(setSessions).catch(() => setSessions([]));
-  }, []);
+  }, [refreshKey]); // re-fetch whenever a new session completes
 
   const displayed = sessions.length > 0 ? sessions : [SAMPLE_SESSION];
 

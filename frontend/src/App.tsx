@@ -9,7 +9,7 @@ import { getMe, logout } from './api/auth';
 import { token } from './api/base';
 import { getSession } from './api/sessions';
 import { ResultsPanel } from './components/ResultsPanel';
-import type { AppView, Clinician, Patient, PastSession, SessionDetail } from './types';
+import type { AppView, Clinician, Patient, PastSession, SessionDetail, SessionResult } from './types';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -21,6 +21,10 @@ function AppInner() {
   const [pastSession, setPastSession] = useState<SessionDetail | null>(null);
   const [pastSessionLoading, setPastSessionLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Sidebar refresh + active highlight
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [activeSummaryId, setActiveSummaryId] = useState<string | undefined>();
 
   // Check for existing valid token on mount — skip entirely if no token stored
   useEffect(() => {
@@ -42,11 +46,13 @@ function AppInner() {
     setClinician(null);
     setView('select');
     setSelectedPatient(null);
+    setActiveSummaryId(undefined);
   };
 
   const handleSelectPatient = (patient: Patient) => {
     setSelectedPatient(patient);
     setView('session');
+    setActiveSummaryId(undefined);
     setSidebarOpen(false);
   };
 
@@ -54,19 +60,28 @@ function AppInner() {
     setView('select');
     setSelectedPatient(null);
     setPastSession(null);
+    setActiveSummaryId(undefined);
     setSidebarOpen(false);
+  };
+
+  // Called by SessionView when processing finishes — refresh sidebar + highlight new entry
+  const handleSessionComplete = (result: SessionResult) => {
+    setActiveSummaryId(result.summary_id);
+    setSidebarRefreshKey((k) => k + 1);
   };
 
   const handleSelectSession = async (session: PastSession) => {
     setPastSessionLoading(true);
     setPastSession(null);
     setView('past-session');
+    setActiveSummaryId(session.id);
     setSidebarOpen(false);
     try {
       const detail = await getSession(session.id);
       setPastSession(detail);
     } catch {
       setView('select');
+      setActiveSummaryId(undefined);
     } finally {
       setPastSessionLoading(false);
     }
@@ -89,19 +104,23 @@ function AppInner() {
     return <LoginPage onLogin={setClinician} />;
   }
 
+  // Shared sidebar props
+  const sidebarProps = {
+    clinician,
+    selectedPatient,
+    onNewSession: handleNewSession,
+    onSelectSession: handleSelectSession,
+    activeSummaryId,
+    refreshKey: sidebarRefreshKey,
+  };
+
   // Authenticated — show main app
   return (
     <div className="flex h-screen w-full bg-background text-foreground antialiased overflow-hidden">
 
       {/* ── Desktop sidebar (always visible on md+) ── */}
       <div className="hidden md:flex shrink-0">
-        <Sidebar
-          clinician={clinician}
-          selectedPatient={selectedPatient}
-          onNewSession={handleNewSession}
-          onSelectSession={handleSelectSession}
-          activeSummaryId={pastSession?.summary_id}
-        />
+        <Sidebar {...sidebarProps} />
       </div>
 
       {/* ── Mobile sidebar drawer ── */}
@@ -117,14 +136,7 @@ function AppInner() {
             className="absolute left-0 top-0 bottom-0 w-72 flex flex-col z-10"
             onClick={(e) => e.stopPropagation()}
           >
-            <Sidebar
-              clinician={clinician}
-              selectedPatient={selectedPatient}
-              onNewSession={handleNewSession}
-              onSelectSession={handleSelectSession}
-              activeSummaryId={pastSession?.summary_id}
-              onClose={() => setSidebarOpen(false)}
-            />
+            <Sidebar {...sidebarProps} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
       )}
@@ -188,7 +200,11 @@ function AppInner() {
           <PatientSelect onSelect={handleSelectPatient} />
         )}
         {view === 'session' && (
-          <SessionView patient={selectedPatient!} onBack={handleNewSession} />
+          <SessionView
+            patient={selectedPatient!}
+            onBack={handleNewSession}
+            onSessionComplete={handleSessionComplete}
+          />
         )}
         {view === 'past-session' && (
           pastSessionLoading ? (
