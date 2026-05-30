@@ -27,7 +27,6 @@ def run_job(job_id: str) -> None:
     Files API upload, regardless of success or failure.
     """
     db = SessionLocal()
-    gemini_file = None
     audio_path = None
 
     try:
@@ -41,19 +40,12 @@ def run_job(job_id: str) -> None:
         mime_type = job.mime_type or "audio/webm"
         service = get_service()
 
-        # ── Step 1: Upload to Gemini Files API ───────────────────────────
-        job.status = "uploading"
-        db.commit()
-        print(f"[job_runner] {job_id} → uploading")
-
-        gemini_file = service.upload_file(audio_path, mime_type)
-
-        # ── Step 2: Transcribe ───────────────────────────────────────────
+        # ── Steps 1+2: Upload + transcribe (parallel chunks for long audio) ──
         job.status = "transcribing"
         db.commit()
         print(f"[job_runner] {job_id} → transcribing")
 
-        transcript = service.transcribe(gemini_file, mime_type)
+        transcript = service.transcribe_fast(audio_path, mime_type)
 
         # ── Step 3: Summarize ────────────────────────────────────────────
         job.status = "summarizing"
@@ -91,13 +83,6 @@ def run_job(job_id: str) -> None:
             print(f"[job_runner] Could not mark job as failed: {inner}")
 
     finally:
-        # Always delete the Gemini Files API upload
-        if gemini_file is not None:
-            try:
-                get_service().delete_file(gemini_file)
-            except Exception:
-                pass
-
         # Always delete the local temp audio file
         if audio_path and os.path.exists(audio_path):
             try:

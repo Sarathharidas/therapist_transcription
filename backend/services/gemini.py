@@ -6,10 +6,15 @@ Methods are split into individual steps so the job runner can
 update status between each phase.
 """
 
+import glob
 import os
+import shutil
+import subprocess
+import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import google.genai as genai
 from google.genai.errors import ClientError
@@ -136,6 +141,99 @@ class GeminiService:
             self.client.files.delete(name=audio_file.name)
         except Exception:
             pass
+
+    # ── Chunked parallel transcription ────────────────────────────────────
+
+    def _get_duration(self, audio_path: str) -> Optional[float]:
+        """Return audio duration in seconds via ffprobe, or None if unavailable."""
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0:
+                return float(result.stdout.strip())
+        except (FileNotFoundError, ValueError, subprocess.TimeoutExpired):
+            pass
+        return None
+
+    def _split_into_chunks(self, audio_path: str, chunk_seconds: int = 300) -> Tuple[str, List[str]]:
+        """
+        Split audio into fixed-length chunks using ffmpeg stream copy (no re-encoding).
+        Returns (tmp_dir, [chunk_paths]) — caller must delete tmp_dir when done.
+        Raises RuntimeError if ffmpeg is unavailable or fails.
+        """
+        tmp_dir = tempfile.mkdtemp(prefix="aura_chunks_")
+        pattern = os.path.join(tmp_dir, "chunk_%03d.webm")
+        result = subprocess.run(
+            ["ffmpeg", "-i", audio_path,
+             "-f", "segment", "-segment_time", str(chunk_seconds),
+             "-reset_timestamps", "1", "-c", "copy", "-y", pattern],
+            capture_output=True, timeout=120,
+        )
+        if result.returncode != 0:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise RuntimeError(f"ffmpeg split failed: {result.stderr.decode()[:300]}")
+        chunks = sorted(glob.glob(os.path.join(tmp_dir, "chunk_*.webm")))
+        print(f"[gemini] Split into {len(chunks)} chunks of ≤{chunk_seconds}s")
+        return tmp_dir, chunks
+
+    def _transcribe_chunk(self, chunk_path: str, index: int, total: int, mime_type: str) -> Tuple[int, str]:
+        """Upload and transcribe one chunk. Cleans up Gemini file when done."""
+        audio_file = self.upload_file(chunk_path, mime_type)
+        try:
+            text = self.transcribe(audio_file, mime_type)
+            print(f"[gemini] Chunk {index + 1}/{total} → {len(text)} chars")
+            return index, text
+        finally:
+            self.delete_file(audio_file)
+
+    def transcribe_fast(self, audio_path: str, mime_type: str = "audio/webm",
+                        chunk_seconds: int = 300, max_workers: int = 6) -> str:
+        """
+        Transcribe audio, automatically chunking long files for parallel processing.
+        Falls back to single-file processing if ffprobe/ffmpeg is unavailable.
+        """
+        duration = self._get_duration(audio_path)
+        print(f"[gemini] Audio duration: {duration}s")
+
+        # Short sessions or no ffprobe → single-file path (unchanged behaviour)
+        if duration is None or duration < chunk_seconds:
+            audio_file = self.upload_file(audio_path, mime_type)
+            try:
+                return self.transcribe(audio_file, mime_type)
+            finally:
+                self.delete_file(audio_file)
+
+        # Long session → split and transcribe in parallel
+        try:
+            tmp_dir, chunks = self._split_into_chunks(audio_path, chunk_seconds)
+        except RuntimeError as e:
+            print(f"[gemini] Chunking failed ({e}), falling back to single-file")
+            audio_file = self.upload_file(audio_path, mime_type)
+            try:
+                return self.transcribe(audio_file, mime_type)
+            finally:
+                self.delete_file(audio_file)
+
+        try:
+            results: List[Optional[str]] = [None] * len(chunks)
+            workers = min(max_workers, len(chunks))
+            print(f"[gemini] Transcribing {len(chunks)} chunks with {workers} workers")
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(self._transcribe_chunk, path, i, len(chunks), mime_type): i
+                    for i, path in enumerate(chunks)
+                }
+                for future in as_completed(futures):
+                    idx, text = future.result()  # raises if chunk failed
+                    results[idx] = text
+
+            return "\n".join(t for t in results if t)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # ── Convenience one-shot wrapper ───────────────────────────────────────
 
