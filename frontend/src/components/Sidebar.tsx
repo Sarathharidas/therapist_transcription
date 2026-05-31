@@ -27,7 +27,7 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
     const load = () => listRecentSessions().then(setSessions).catch(() => setSessions([]));
     load(); // immediate fetch on mount / when a session is submitted
     // Poll periodically so background transcriptions surface here once they finish
-    const id = setInterval(load, 20000);
+    const id = setInterval(load, 10000);
     return () => clearInterval(id);
   }, [refreshKey]);
 
