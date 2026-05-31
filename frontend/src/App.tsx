@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import { LogOut, Menu, UserPlus } from 'lucide-react';
+import { LogOut, Menu, UserPlus, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { PatientSelect } from './components/PatientSelect';
 import { SessionView } from './components/SessionView';
@@ -9,7 +9,7 @@ import { getMe, logout } from './api/auth';
 import { token } from './api/base';
 import { getSession } from './api/sessions';
 import { ResultsPanel } from './components/ResultsPanel';
-import type { AppView, Clinician, Patient, PastSession, SessionDetail, SessionResult } from './types';
+import type { AppView, Clinician, Patient, PastSession, SessionDetail } from './types';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -25,6 +25,9 @@ function AppInner() {
   // Sidebar refresh + active highlight
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [activeSummaryId, setActiveSummaryId] = useState<string | undefined>();
+
+  // Transient "processing in background" notice shown after a recording is submitted
+  const [processingNotice, setProcessingNotice] = useState<string | null>(null);
 
   // Check for existing valid token on mount — skip entirely if no token stored
   useEffect(() => {
@@ -64,11 +67,24 @@ function AppInner() {
     setSidebarOpen(false);
   };
 
-  // Called by SessionView when processing finishes — refresh sidebar + highlight new entry
-  const handleSessionComplete = (result: SessionResult) => {
-    setActiveSummaryId(result.summary_id);
+  // Called by SessionView once audio is submitted — the backend transcribes in the
+  // background. Free the clinician: return to patient-select and show a brief notice.
+  // The finished note appears in Recent Notes on the sidebar's interval refresh.
+  const handleProcessingStarted = () => {
+    const name = selectedPatient?.name ?? 'the session';
+    setProcessingNotice(
+      `Transcription for ${name} is processing in the background — it'll appear in Recent Notes shortly.`,
+    );
     setSidebarRefreshKey((k) => k + 1);
+    handleNewSession();
   };
+
+  // Auto-dismiss the processing notice after a few seconds
+  useEffect(() => {
+    if (!processingNotice) return;
+    const id = setTimeout(() => setProcessingNotice(null), 8000);
+    return () => clearTimeout(id);
+  }, [processingNotice]);
 
   const handleSelectSession = async (session: PastSession) => {
     setPastSessionLoading(true);
@@ -196,6 +212,23 @@ function AppInner() {
           </div>
         </header>
 
+        {/* Background-processing notice */}
+        {processingNotice && (
+          <div className="mx-4 sm:mx-8 mt-4 p-3 sm:p-4 bg-accent/10 border border-accent/30 rounded-xl flex items-start justify-between gap-3 animate-fade-in">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <div className="size-1.5 bg-accent rounded-full mt-1.5 shrink-0 animate-pulse" />
+              <p className="text-sm text-foreground/80">{processingNotice}</p>
+            </div>
+            <button
+              onClick={() => setProcessingNotice(null)}
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Dismiss"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        )}
+
         {view === 'select' && (
           <PatientSelect onSelect={handleSelectPatient} />
         )}
@@ -203,7 +236,7 @@ function AppInner() {
           <SessionView
             patient={selectedPatient!}
             onBack={handleNewSession}
-            onSessionComplete={handleSessionComplete}
+            onProcessingStarted={handleProcessingStarted}
           />
         )}
         {view === 'past-session' && (

@@ -43,10 +43,4 @@ export type JobStatus = {
 };
 
 export type AppView = 'select' | 'session' | 'past-session';
-export type SessionPhase = 'ready' | 'recording' | 'processing' | 'done';
-
-export type ProcessingStage = {
-  id: number;
-  label: string;
-  state: 'pending' | 'active' | 'done';
-};
+export type SessionPhase = 'ready' | 'recording' | 'submitting';

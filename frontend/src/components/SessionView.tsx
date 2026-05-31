@@ -1,44 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Mic, UserPlus } from 'lucide-react';
+import { Mic } from 'lucide-react';
 import { useRecorder } from '../hooks/useRecorder';
-import { getSession, pollJobStatus, submitSession } from '../api/sessions';
-import { ResultsPanel } from './ResultsPanel';
-import type { JobStatus, Patient, SessionPhase, SessionResult } from '../types';
+import { submitSession } from '../api/sessions';
+import type { Patient, SessionPhase } from '../types';
 
 type Props = {
   patient: Patient;
   onBack: () => void;
-  onSessionComplete?: (result: SessionResult) => void;
+  // Called once the audio has been submitted and the backend job is running.
+  // The parent navigates back to patient-select and shows a "processing" notice.
+  onProcessingStarted: () => void;
 };
 
-type ProcessingStageState = 'pending' | 'active' | 'done';
-
-const STAGES = [
-  { id: 1, label: 'Uploading audio' },
-  { id: 2, label: 'Transcribing — Malayalam & English' },
-  { id: 3, label: 'Writing clinical notes' },
-];
-
-// Map backend job status → which UI stage should be active
-const STATUS_TO_STAGE: Partial<Record<JobStatus['status'], number>> = {
-  pending:      1,
-  uploading:    1,
-  transcribing: 2,
-  summarizing:  3,
-};
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-export function SessionView({ patient, onBack, onSessionComplete }: Props) {
+export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
   const { state: recorderState, blob, start, stop, reset } = useRecorder();
   const [phase, setPhase] = useState<SessionPhase>('ready');
   const [elapsed, setElapsed] = useState(0);
-  const [result, setResult] = useState<SessionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stageStates, setStageStates] = useState<ProcessingStageState[]>(['pending', 'pending', 'pending']);
   const startedAt = useRef<number | null>(null);
-  const durationRef = useRef(0);
-  // Used to stop polling if the component unmounts mid-job
+  // Used to avoid acting after the component unmounts mid-submit
   const activeRef = useRef(true);
 
   useEffect(() => {
@@ -58,82 +38,15 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
     return () => clearInterval(id);
   }, [phase]);
 
-  // When recorder stops → kick off async processing
-  useEffect(() => {
-    if (recorderState === 'stopped' && blob) {
-      durationRef.current = elapsed;
-      setPhase('processing');
-      runProcessing(blob);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recorderState, blob]);
-
-  const activateStage = useCallback((n: number) => {
-    setStageStates((_prev) => [
-      n > 1 ? 'done'    : n === 1 ? 'active' : 'pending',
-      n > 2 ? 'done'    : n === 2 ? 'active' : 'pending',
-      n > 3 ? 'done'    : n === 3 ? 'active' : 'pending',
-    ] as ProcessingStageState[]);
-  }, []);
-
-  const runProcessing = useCallback(async (audioBlob: Blob) => {
+  const runSubmit = useCallback(async (audioBlob: Blob) => {
     setError(null);
-    activateStage(1);  // show "Uploading" immediately
-
     try {
-      // ── Step 1: POST audio — returns in < 1 second with a job_id ──────
+      // POST audio — returns in < 1s with a job_id; the backend processes
+      // the transcription as a true background job from here on.
       const jobId = await submitSession(audioBlob, patient.id);
       console.log(`[session] Job submitted: ${jobId}`);
-
-      // ── Step 2: Poll every 4 seconds until complete or failed ─────────
-      let consecutiveErrors = 0;
-
-      while (true) {
-        await sleep(4000);
-
-        if (!activeRef.current) return; // component unmounted — stop quietly
-
-        let job: JobStatus;
-        try {
-          job = await pollJobStatus(jobId);
-          consecutiveErrors = 0;
-        } catch {
-          consecutiveErrors++;
-          if (consecutiveErrors >= 3) {
-            throw new Error('Lost connection to server. Please check your network and try again.');
-          }
-          console.warn(`[session] Poll error ${consecutiveErrors}/3, retrying…`);
-          continue;
-        }
-
-        // Advance the UI stage indicator based on real backend status
-        const stage = STATUS_TO_STAGE[job.status];
-        if (stage !== undefined) activateStage(stage);
-
-        if (job.status === 'complete' && job.summary_id) {
-          setStageStates(['done', 'done', 'done']);
-
-          // Fetch full session detail to display in ResultsPanel
-          const detail = await getSession(job.summary_id);
-          const sessionResult: SessionResult = {
-            transcript: detail.transcript,
-            summary:    detail.summary,
-            patient_id: detail.patient_id,
-            summary_id: detail.summary_id,
-          };
-
-          if (!activeRef.current) return;
-          setResult(sessionResult);
-          setPhase('done');
-          onSessionComplete?.(sessionResult);
-          return;
-        }
-
-        if (job.status === 'failed') {
-          throw new Error(job.error ?? 'Processing failed. Please try again.');
-        }
-      }
-
+      if (!activeRef.current) return;
+      onProcessingStarted();
     } catch (err) {
       if (!activeRef.current) return;
       const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -146,13 +59,20 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
       reset();
       setElapsed(0);
     }
-  }, [activateStage, patient.id, reset, onSessionComplete]);
+  }, [patient.id, reset, onProcessingStarted]);
+
+  // When recorder stops → submit audio for background processing
+  useEffect(() => {
+    if (recorderState === 'stopped' && blob) {
+      setPhase('submitting');
+      runSubmit(blob);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorderState, blob]);
 
   const handleStart = async () => {
     setElapsed(0);
-    setResult(null);
     setError(null);
-    setStageStates(['pending', 'pending', 'pending']);
     try {
       await start();
       setPhase('recording');
@@ -162,15 +82,6 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
   };
 
   const handleStop = () => { stop(); };
-
-  const handleNewSession = () => {
-    reset();
-    setPhase('ready');
-    setElapsed(0);
-    setResult(null);
-    setError(null);
-    setStageStates(['pending', 'pending', 'pending']);
-  };
 
   const formatted = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
 
@@ -191,7 +102,7 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
 
         {/* Controls */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {phase !== 'processing' && (
+          {phase === 'ready' && (
             <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
               ← Change
             </button>
@@ -227,27 +138,6 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
               </button>
             </div>
           )}
-
-          {phase === 'done' && (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button
-                onClick={handleNewSession}
-                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-secondary text-foreground text-xs font-medium rounded-lg hover:bg-secondary/70 transition-colors"
-              >
-                <Check className="size-3.5" />
-                <span className="hidden sm:inline">Session complete</span>
-                <span className="sm:hidden">Done</span>
-              </button>
-              <button
-                onClick={handleStart}
-                className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-accent text-accent-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity"
-              >
-                <UserPlus className="size-3.5" />
-                <span className="hidden sm:inline">New recording</span>
-                <span className="sm:hidden">New</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -259,10 +149,8 @@ export function SessionView({ patient, onBack, onSessionComplete }: Props) {
       )}
 
       {/* Content */}
-      {phase === 'done' && result ? (
-        <ResultsPanel result={result} durationSeconds={durationRef.current} patientName={patient.name} />
-      ) : phase === 'processing' ? (
-        <ProcessingView stageStates={stageStates} patientName={patient.name} />
+      {phase === 'submitting' ? (
+        <SubmittingView patientName={patient.name} />
       ) : (
         <RecordingIdleView phase={phase} patientName={patient.name} onStart={handleStart} onStop={handleStop} />
       )}
@@ -299,58 +187,17 @@ function RecordingIdleView({
   );
 }
 
-function ProcessingView({
-  stageStates, patientName,
-}: { stageStates: ProcessingStageState[]; patientName: string }) {
+function SubmittingView({ patientName }: { patientName: string }) {
   return (
     <div className="flex-1 flex items-center justify-center px-6 sm:px-8">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 bg-accent/10 px-3 py-1 rounded-full mb-4">
-            <div className="size-1.5 bg-accent rounded-full animate-pulse" />
-            <span className="text-[10px] font-bold text-accent uppercase tracking-wider">Processing</span>
-          </div>
-          <h2 className="text-2xl" style={{ fontFamily: 'var(--font-serif)' }}>{patientName}</h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            This usually takes 1–5 minutes depending on session length.
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {STAGES.map((stage, i) => {
-            const state = stageStates[i];
-            return (
-              <div key={stage.id} className="flex items-center gap-4">
-                <div className={`size-8 rounded-full flex items-center justify-center shrink-0 text-sm transition-colors ${
-                  state === 'done'   ? 'bg-green-100 text-green-700' :
-                  state === 'active' ? 'bg-accent/10 text-accent'    :
-                                       'bg-secondary text-muted-foreground'
-                }`}>
-                  {state === 'done' ? (
-                    <Check className="size-4" />
-                  ) : state === 'active' ? (
-                    <svg className="size-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>{stage.id}</span>
-                  )}
-                </div>
-                <span className={`text-sm transition-colors ${
-                  state === 'active' ? 'text-foreground font-medium' :
-                  state === 'done'   ? 'text-green-700'              :
-                                       'text-muted-foreground'
-                }`}>
-                  {stage.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-8 text-center">
-          You can safely leave this page — processing continues in the background.
+      <div className="text-center max-w-sm">
+        <svg className="size-8 animate-spin text-accent mx-auto mb-6" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>Saving recording…</h2>
+        <p className="text-sm text-muted-foreground">
+          Securing {patientName}'s session. This only takes a moment.
         </p>
       </div>
     </div>

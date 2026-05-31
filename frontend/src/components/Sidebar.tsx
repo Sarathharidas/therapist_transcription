@@ -24,8 +24,12 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
   const [sessions, setSessions] = useState<PastSession[]>([]);
 
   useEffect(() => {
-    listRecentSessions().then(setSessions).catch(() => setSessions([]));
-  }, [refreshKey]); // re-fetch whenever a new session completes
+    const load = () => listRecentSessions().then(setSessions).catch(() => setSessions([]));
+    load(); // immediate fetch on mount / when a session is submitted
+    // Poll periodically so background transcriptions surface here once they finish
+    const id = setInterval(load, 20000);
+    return () => clearInterval(id);
+  }, [refreshKey]);
 
   const displayed = sessions.length > 0 ? sessions : [SAMPLE_SESSION];
 
