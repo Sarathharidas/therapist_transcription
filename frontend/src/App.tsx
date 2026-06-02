@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { PatientSelect } from './components/PatientSelect';
 import { SessionView } from './components/SessionView';
 import { LoginPage } from './components/LoginPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { getMe, logout } from './api/auth';
 import { token } from './api/base';
 import { getSession } from './api/sessions';
@@ -268,8 +269,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AppInner />
-    </GoogleOAuthProvider>
+    <ErrorBoundary>
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <AppInner />
+      </GoogleOAuthProvider>
+    </ErrorBoundary>
   );
 }

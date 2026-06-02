@@ -38,6 +38,19 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
     return () => clearInterval(id);
   }, [phase]);
 
+  // Warn before closing/navigating away during a live recording or upload.
+  // Once submitSession resolves the audio is safe on the server — only
+  // recording + submitting phases are at risk of data loss.
+  useEffect(() => {
+    if (phase !== 'recording' && phase !== 'submitting') return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [phase]);
+
   const runSubmit = useCallback(async (audioBlob: Blob) => {
     setError(null);
     try {

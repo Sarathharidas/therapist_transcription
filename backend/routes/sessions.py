@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,10 @@ from backend.services.auth import get_current_clinician
 from backend.services.job_runner import run_job
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+# Reject uploads larger than this. A 4-hour webm at 128 kbps is ~230 MB;
+# anything beyond ~300 MB is suspect (or someone uploading non-audio).
+MAX_UPLOAD_BYTES = 300 * 1024 * 1024  # 300 MB
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────
@@ -71,6 +75,7 @@ def _format_date(created_at_str) -> str:
 
 @router.post("/process", status_code=202)
 async def submit_session(
+    request: Request,
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
     patient_id: str = Form(...),
@@ -83,6 +88,14 @@ async def submit_session(
 
     The client polls GET /job/{job_id} to track progress.
     """
+    # Early reject on Content-Length — avoids buffering huge bodies before checking
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
+        )
+
     # Verify patient belongs to this clinician
     patient = (
         db.query(Patient)
@@ -99,10 +112,17 @@ async def submit_session(
     mime_type = audio.content_type or "audio/webm"
     suffix = ".mp4" if "mp4" in mime_type else ".webm"
 
-    # Save audio to a persistent temp file (must outlive the HTTP request)
+    # Save audio to a persistent temp file (must outlive the HTTP request).
+    # Defense in depth: also enforce size limit after reading (Content-Length
+    # can be missing or lie about chunked uploads).
     job_id = str(uuid.uuid4())
     audio_path = os.path.join(tempfile.gettempdir(), f"aura_{job_id}{suffix}")
     content = await audio.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
+        )
     with open(audio_path, "wb") as f:
         f.write(content)
 

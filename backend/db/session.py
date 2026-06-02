@@ -1,5 +1,12 @@
 """
 Database engine + session factory.
+
+Connection pool tuned for serverless Postgres (Neon) where idle
+connections are closed after ~5 minutes:
+  - pool_pre_ping=True   → ping before checkout, recover from dropped connections
+  - pool_recycle=300     → proactively recycle connections every 5 min
+  - pool_size=5          → small base pool; therapist app is low-traffic
+  - max_overflow=10      → bursts during concurrent uploads
 """
 
 import os
@@ -13,7 +20,13 @@ def _build_engine():
     url = os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set in .env")
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=10,
+    )
 
 
 engine = _build_engine()

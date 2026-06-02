@@ -3,6 +3,8 @@ Auth service — Google token verification + JWT issue/verify + FastAPI dependen
 """
 
 import os
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -17,6 +19,8 @@ from backend.db.session import get_db
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 7
+# Allow a little clock drift between Railway and Google (default is 0)
+TOKEN_CLOCK_SKEW_SECONDS = 10
 
 
 def _jwt_secret() -> str:
@@ -27,19 +31,38 @@ def _jwt_secret() -> str:
 
 
 def verify_google_token(credential: str) -> dict:
-    """Verify a Google ID token and return its claims."""
+    """
+    Verify a Google ID token and return its claims.
+
+    Retries once on transient failures (Google's JWK key fetch can fail
+    on cold start or during brief network blips). Logs the specific
+    exception type so failures are diagnosable in Railway logs.
+    """
     client_id = os.getenv("GOOGLE_CLIENT_ID", "")
     if not client_id:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
-    try:
-        claims = id_token.verify_oauth2_token(
-            credential,
-            google_requests.Request(),
-            client_id,
-        )
-        return claims
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {e}")
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(2):
+        try:
+            claims = id_token.verify_oauth2_token(
+                credential,
+                google_requests.Request(),
+                client_id,
+                clock_skew_in_seconds=TOKEN_CLOCK_SKEW_SECONDS,
+            )
+            return claims
+        except Exception as e:
+            last_exc = e
+            print(f"[auth] Token verify attempt {attempt + 1} failed "
+                  f"({type(e).__name__}): {e}")
+            if attempt == 0:
+                time.sleep(1)  # brief backoff before second try
+
+    raise HTTPException(
+        status_code=401,
+        detail=f"Google token verification failed: {last_exc}",
+    )
 
 
 def create_jwt(clinician_id: str) -> str:
@@ -68,10 +91,8 @@ def get_current_clinician(
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    from backend.db import Clinician as ClinicianModel
-    import uuid
-    clinician = db.query(ClinicianModel).filter(
-        ClinicianModel.clinician_id == uuid.UUID(clinician_id)
+    clinician = db.query(Clinician).filter(
+        Clinician.clinician_id == uuid.UUID(clinician_id)
     ).first()
 
     if clinician is None:
