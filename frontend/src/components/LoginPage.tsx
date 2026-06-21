@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { Building2, User } from 'lucide-react';
-import { getAuthConfig, googleLogin, type LoginMode } from '../api/auth';
+import { googleLogin, type LoginMode } from '../api/auth';
 import { token } from '../api/base';
 import type { Clinician } from '../types';
 
@@ -13,12 +13,6 @@ export function LoginPage({ onLogin }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<LoginMode>('individual');
-  const [clinicEnabled, setClinicEnabled] = useState(false);
-
-  // Show the clinic path only when a clinic is configured on this deployment
-  useEffect(() => {
-    getAuthConfig().then((c) => setClinicEnabled(c.clinicEnabled)).catch(() => {});
-  }, []);
 
   const handleSuccess = async (credentialResponse: { credential?: string }) => {
     if (!credentialResponse.credential) {
@@ -64,29 +58,25 @@ export function LoginPage({ onLogin }: Props) {
             Welcome back.
           </h1>
           <p className="text-muted-foreground text-sm">
-            {clinicEnabled
-              ? mode === 'clinic'
-                ? 'Sign in to your clinic with your work Google account.'
-                : 'Sign in to access your sessions and patients.'
+            {mode === 'clinic'
+              ? 'Sign in to your clinic with your work Google account.'
               : 'Sign in to access your sessions and patients.'}
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-card border border-border rounded-2xl shadow-sm p-8">
-          {/* Path selector — only when a clinic is configured */}
-          {clinicEnabled && (
-            <div className="flex gap-1 p-1 bg-secondary rounded-xl mb-6">
-              {pathTab('individual', <User className="size-4" />, 'Individual')}
-              {pathTab('clinic', <Building2 className="size-4" />, 'My clinic')}
-            </div>
-          )}
+          {/* Path selector — always available */}
+          <div className="flex gap-1 p-1 bg-secondary rounded-xl mb-6">
+            {pathTab('individual', <User className="size-4" />, 'Individual')}
+            {pathTab('clinic', <Building2 className="size-4" />, 'Clinic')}
+          </div>
 
           <p
             className="text-[11px] uppercase tracking-widest text-muted-foreground mb-6 text-center"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
-            Continue with
+            {mode === 'clinic' ? 'Clinic sign-in' : 'Individual practitioner'}
           </p>
 
           {loading ? (
@@ -117,7 +107,7 @@ export function LoginPage({ onLogin }: Props) {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          {clinicEnabled && mode === 'clinic'
+          {mode === 'clinic'
             ? 'Clinic access is invite-only — ask your admin if you need an invitation.'
             : 'Your data is private and scoped to your account.'}
         </p>
