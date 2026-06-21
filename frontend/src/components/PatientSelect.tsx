@@ -303,6 +303,7 @@ function GroupPanel({ patients, loading, onAddPatient, onSelectGroup }: GroupPan
 
   // Builder state
   const [label, setLabel] = useState('');
+  const [labelDirty, setLabelDirty] = useState(false); // true once the doctor edits the name
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -313,6 +314,23 @@ function GroupPanel({ patients, loading, onAddPatient, onSelectGroup }: GroupPan
       .catch(() => setGroups([]))
       .finally(() => setGroupsLoading(false));
   }, []);
+
+  // Suggested group name from the current selection, in pick order.
+  // First names only, e.g. "Asha & Ravi" / "Asha, Ravi & Maya".
+  const defaultLabel = useMemo(() => {
+    const names = Array.from(selected)
+      .map((id) => patients.find((p) => p.id === id)?.name?.trim().split(/\s+/)[0])
+      .filter(Boolean) as string[];
+    if (names.length === 0) return '';
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} & ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+  }, [selected, patients]);
+
+  // Keep the name field in sync with the selection until the doctor types their own.
+  useEffect(() => {
+    if (!labelDirty) setLabel(defaultLabel);
+  }, [defaultLabel, labelDirty]);
 
   const startFromGroup = async (groupId: string) => {
     setError(null);
@@ -374,7 +392,7 @@ function GroupPanel({ patients, loading, onAddPatient, onSelectGroup }: GroupPan
         <input
           autoFocus
           value={label}
-          onChange={(e) => setLabel(e.target.value)}
+          onChange={(e) => { setLabel(e.target.value); setLabelDirty(e.target.value.trim() !== ''); }}
           placeholder="e.g. Asha & Ravi"
           className="w-full bg-card border border-border px-4 py-3 text-sm rounded-lg focus:outline-none focus:ring-1 focus:ring-accent/40 mb-6"
         />
@@ -471,7 +489,7 @@ function GroupPanel({ patients, loading, onAddPatient, onSelectGroup }: GroupPan
       )}
 
       <button
-        onClick={() => { setBuilding(true); setError(null); setSelected(new Set()); setLabel(''); }}
+        onClick={() => { setBuilding(true); setError(null); setSelected(new Set()); setLabel(''); setLabelDirty(false); }}
         className="inline-flex items-center gap-2 px-4 py-2.5 bg-foreground text-background text-sm font-medium rounded-lg hover:opacity-90 transition-opacity"
       >
         <Plus className="size-4" /> New group
