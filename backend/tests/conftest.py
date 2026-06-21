@@ -50,6 +50,8 @@ _db_session.SessionLocal = TestingSessionLocal
 from backend.db import (  # noqa: E402
     AppointmentSession,
     Base,
+    Clinic,
+    ClinicInvite,
     Clinician,
     Group,
     GroupMember,
@@ -118,7 +120,9 @@ def _clean_db_between_tests() -> Iterator[None]:
         db.query(AppointmentSession).delete()
         db.query(Group).delete()
         db.query(Patient).delete()
+        db.query(ClinicInvite).delete()
         db.query(Clinician).delete()
+        db.query(Clinic).delete()
         db.commit()
     finally:
         db.close()
@@ -201,3 +205,40 @@ def patient(db, clinician) -> Patient:
     db.commit()
     db.refresh(p)
     return p
+
+
+# ── Clinic fixtures (enterprise) ─────────────────────────────────────────
+@pytest.fixture
+def clinic(db) -> Clinic:
+    """A persisted clinic."""
+    c = Clinic(clinic_id=uuid.uuid4(), name="Bright Minds", created_at="2026-01-01T00:00:00")
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return c
+
+
+@pytest.fixture
+def clinic_admin(db, clinic) -> Clinician:
+    """An admin member of the test clinic."""
+    a = Clinician(
+        clinician_id=uuid.uuid4(),
+        email="admin@brightminds.com",
+        name="Dr. Admin",
+        google_id="google-sub-admin",
+        clinic_id=clinic.clinic_id,
+        role="admin",
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return a
+
+
+@pytest.fixture
+def admin_client(clinic_admin) -> TestClient:
+    """Client authenticated as the clinic admin."""
+    c = TestClient(app)
+    token = create_jwt(str(clinic_admin.clinician_id))
+    c.headers.update({"Authorization": f"Bearer {token}"})
+    return c

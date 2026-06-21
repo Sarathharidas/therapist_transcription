@@ -65,8 +65,10 @@ Therapist Transcripts/
 │   │   ├── session.py            # Engine + SessionLocal + get_db() generator
 │   │   └── seed.py               # Seeds clinician from .env on startup; caches UUID
 │   ├── routes/
+│   │   ├── auth.py               # Google login (dual-path) + /me + /config
 │   │   ├── patients.py           # GET/POST /api/patients
 │   │   ├── groups.py             # GET/POST /api/groups (couples/families)
+│   │   ├── clinic.py             # clinic members + invites (enterprise)
 │   │   └── sessions.py           # appointment + segmented /process + appointment detail
 │   └── services/
 │       └── gemini.py             # GeminiService — upload, transcribe, summarise
@@ -87,6 +89,8 @@ Therapist Transcripts/
         │   ├── SessionView.tsx      # Solo recording controls + processing stages
         │   ├── GroupSessionView.tsx # Segmented recording (joint / 1:1) for an appointment
         │   ├── AppointmentView.tsx  # Appointment results — segments + per-person confidentiality filter
+        │   ├── LoginPage.tsx        # Google sign-in with Individual / Clinic path selector
+        │   ├── TeamView.tsx         # Clinic admin: members, invites, roles
         │   ├── ResultsPanel.tsx     # Split view: transcript (left) + summary (right)
         │   └── Sidebar.tsx          # Left nav — collapses appointment segments into one entry
         ├── hooks/
@@ -182,6 +186,12 @@ SQLite test DB is created fresh from the models).
 | `POST` | `/api/sessions/process` | Form: `audio` + `patient_id` (+ optional `session_id`, `segment_type`, `participant_ids`) → `{ job_id }` (202) |
 | `GET` | `/api/sessions/recent` | Recent segments; grouped rows carry `session_id` / `session_label` / `segment_type` |
 | `GET` | `/api/sessions/appointment/{id}` | An appointment with all its segments + per-segment participants |
+| `POST` | `/api/auth/login` | Google credential `{ credential, mode? }` (`individual`\|`clinic`) → JWT + clinician |
+| `GET` | `/api/auth/config` | Public — `{ clinic_enabled }` so the login screen can show the clinic path |
+| `GET` | `/api/clinic` | Clinic name + members + pending invites (clinic members) |
+| `POST` | `/api/clinic/invites` | *(admin)* Invite `{ email, role }` |
+| `DELETE` | `/api/clinic/invites/{id}` | *(admin)* Revoke a pending invite |
+| `PATCH`/`DELETE` | `/api/clinic/members/{id}` | *(admin)* Change role / remove member (last-admin guarded) |
 
 **`PatientOut`** (JSON):
 ```json
@@ -209,6 +219,28 @@ with who's in the room — so confidentiality is explicit, not guessed:
 4. `AppointmentView` groups the segments. A **per-person filter** shows joint
    segments + that person's own 1:1 only — a partner's private 1:1 is never mixed in.
 
+### Clinic / multi-therapist (enterprise)
+
+Two login paths coexist on one deployment, chosen on the login screen:
+
+- **Individual therapist** — open Google sign-in → a private solo account
+  (`clinicians.clinic_id = NULL`). **Unchanged from the original single-user flow.**
+- **Sign in to my clinic** — invite-gated join. Shown only when a clinic exists
+  (`GET /api/auth/config` → `clinic_enabled`).
+
+Key points:
+- **Data is NOT shared.** A clinic is a login/membership boundary only; every therapist's
+  patients/sessions stay scoped to their own `clinician_id` exactly as before.
+- **Invite-only, no email infra.** An admin adds a teammate's email
+  (`POST /api/clinic/invites`). Because Google verifies the email at sign-in, matching a
+  `pending` `clinic_invite` to the verified email is enough to admit them — no magic links.
+- **Login decision tree** (`routes/auth.py:google_login`, `mode` defaults to `individual`):
+  existing clinician → return as-is; new email + pending invite → join that clinic;
+  new email + no invite + individual → solo signup; new email + no invite + clinic → 403.
+- **Bootstrap** the first clinic + admin from `CLINIC_NAME` / `CLINIC_ADMIN_EMAIL`
+  (`main.py:_bootstrap_clinic`). Roles are `admin` | `therapist`; `require_admin`
+  (`services/auth.py`) guards management routes. Admin UI is `TeamView.tsx`.
+
 ---
 
 ## Environment Variables
@@ -220,6 +252,10 @@ DATABASE_URL=            # PostgreSQL connection string — required
 CLINICIAN_EMAIL=         # e.g. doctor@clinic.com — seeded to DB on startup
 CLINICIAN_NAME=          # e.g. Dr. Abid — seeded to DB on startup
 FRONTEND_ORIGIN=         # Vercel URL e.g. https://your-app.vercel.app (CORS)
+
+# Clinic / enterprise (OPTIONAL — unset = plain single-therapist deployment)
+CLINIC_NAME=             # e.g. "Bright Minds" — creates the clinic on startup
+CLINIC_ADMIN_EMAIL=      # the first admin — promoted/invited on startup
 ```
 
 ### Frontend (set in Vercel dashboard, or `frontend/.env.production`)

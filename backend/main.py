@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
-from backend.db import Base                                    # noqa: E402
-from backend.db.session import engine, get_db                  # noqa: E402
+from backend.db import Base, Clinic, ClinicInvite, Clinician   # noqa: E402
+from backend.db.session import engine, get_db, SessionLocal    # noqa: E402
 from backend.routes.auth import router as auth_router          # noqa: E402
+from backend.routes.clinic import router as clinic_router      # noqa: E402
 from backend.routes.groups import router as groups_router      # noqa: E402
 from backend.routes.patients import router as patients_router  # noqa: E402
 from backend.routes.sessions import router as sessions_router  # noqa: E402
@@ -90,19 +91,22 @@ app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(groups_router)
 app.include_router(sessions_router)
+app.include_router(clinic_router)
 
 
 # ── Lightweight, idempotent column migrations ─────────────────────────────
 # create_all() adds new TABLES but never ALTERs existing ones. These ADD COLUMN
-# IF NOT EXISTS statements bring older `summaries`/`jobs` tables up to date for
-# the group/couple-therapy feature. Postgres-only — on SQLite (tests) the tables
-# are created fresh from the models so the columns already exist.
+# IF NOT EXISTS statements bring older `summaries`/`jobs`/`clinicians` tables up to
+# date for the group/couple-therapy and clinic features. Postgres-only — on SQLite
+# (tests) the tables are created fresh from the models so the columns already exist.
 _COLUMN_MIGRATIONS = (
     "ALTER TABLE summaries ADD COLUMN IF NOT EXISTS session_id UUID",
     "ALTER TABLE summaries ADD COLUMN IF NOT EXISTS segment_type TEXT",
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS session_id UUID",
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS segment_type TEXT",
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS participant_ids TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS clinic_id UUID",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'therapist'",
 )
 
 
@@ -115,11 +119,68 @@ def _run_column_migrations() -> None:
     print("[startup] Column migrations applied")
 
 
+# ── Clinic bootstrap ───────────────────────────────────────────────────────
+# Enterprise deployments set CLINIC_NAME + CLINIC_ADMIN_EMAIL. On startup we
+# ensure the clinic exists and the admin email can get in as an admin — either
+# by promoting an existing clinician row or by leaving a pending admin invite.
+# Without these env vars the app stays a plain single-therapist deployment.
+def _bootstrap_clinic() -> None:
+    name = (os.getenv("CLINIC_NAME") or "").strip()
+    admin_email = (os.getenv("CLINIC_ADMIN_EMAIL") or "").strip().lower()
+    if not name or not admin_email:
+        return
+
+    db = SessionLocal()
+    try:
+        clinic = db.query(Clinic).filter(Clinic.name == name).first()
+        if clinic is None:
+            clinic = Clinic(name=name)
+            db.add(clinic)
+            db.commit()
+            db.refresh(clinic)
+            print(f"[startup] Clinic created: {name}")
+
+        existing = db.query(Clinician).filter(Clinician.email == admin_email).first()
+        if existing is not None:
+            changed = False
+            if existing.clinic_id is None:
+                existing.clinic_id = clinic.clinic_id
+                changed = True
+            if (existing.role or "therapist") != "admin":
+                existing.role = "admin"
+                changed = True
+            if changed:
+                db.commit()
+                print(f"[startup] Promoted {admin_email} to clinic admin")
+        else:
+            pending = (
+                db.query(ClinicInvite)
+                .filter(
+                    ClinicInvite.email == admin_email,
+                    ClinicInvite.clinic_id == clinic.clinic_id,
+                    ClinicInvite.status == "pending",
+                )
+                .first()
+            )
+            if pending is None:
+                db.add(ClinicInvite(
+                    clinic_id=clinic.clinic_id,
+                    email=admin_email,
+                    role="admin",
+                    status="pending",
+                ))
+                db.commit()
+                print(f"[startup] Pending admin invite created for {admin_email}")
+    finally:
+        db.close()
+
+
 # ── Startup: create tables ─────────────────────────────────────────────────
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
     _run_column_migrations()
+    _bootstrap_clinic()
     print("[startup] Database tables ready")
 
 

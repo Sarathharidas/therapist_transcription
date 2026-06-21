@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
-import { googleLogin } from '../api/auth';
+import { Building2, User } from 'lucide-react';
+import { getAuthConfig, googleLogin, type LoginMode } from '../api/auth';
 import { token } from '../api/base';
 import type { Clinician } from '../types';
 
@@ -11,6 +12,13 @@ type Props = {
 export function LoginPage({ onLogin }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<LoginMode>('individual');
+  const [clinicEnabled, setClinicEnabled] = useState(false);
+
+  // Show the clinic path only when a clinic is configured on this deployment
+  useEffect(() => {
+    getAuthConfig().then((c) => setClinicEnabled(c.clinicEnabled)).catch(() => {});
+  }, []);
 
   const handleSuccess = async (credentialResponse: { credential?: string }) => {
     if (!credentialResponse.credential) {
@@ -20,14 +28,26 @@ export function LoginPage({ onLogin }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const data = await googleLogin(credentialResponse.credential);
-      token.set(data.access_token);
+      const data = await googleLogin(credentialResponse.credential, mode);
+      token.set(data.accessToken);
       onLogin(data.clinician);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');
       setLoading(false);
     }
   };
+
+  const pathTab = (m: LoginMode, icon: React.ReactNode, label: string) => (
+    <button
+      onClick={() => { setMode(m); setError(null); }}
+      className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+        mode === m ? 'bg-card border border-border shadow-sm' : 'text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -44,12 +64,24 @@ export function LoginPage({ onLogin }: Props) {
             Welcome back.
           </h1>
           <p className="text-muted-foreground text-sm">
-            Sign in to access your sessions and patients.
+            {clinicEnabled
+              ? mode === 'clinic'
+                ? 'Sign in to your clinic with your work Google account.'
+                : 'Sign in to access your sessions and patients.'
+              : 'Sign in to access your sessions and patients.'}
           </p>
         </div>
 
         {/* Card */}
         <div className="bg-card border border-border rounded-2xl shadow-sm p-8">
+          {/* Path selector — only when a clinic is configured */}
+          {clinicEnabled && (
+            <div className="flex gap-1 p-1 bg-secondary rounded-xl mb-6">
+              {pathTab('individual', <User className="size-4" />, 'Individual')}
+              {pathTab('clinic', <Building2 className="size-4" />, 'My clinic')}
+            </div>
+          )}
+
           <p
             className="text-[11px] uppercase tracking-widest text-muted-foreground mb-6 text-center"
             style={{ fontFamily: 'var(--font-mono)' }}
@@ -85,7 +117,9 @@ export function LoginPage({ onLogin }: Props) {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Your data is private and scoped to your account.
+          {clinicEnabled && mode === 'clinic'
+            ? 'Clinic access is invite-only — ask your admin if you need an invitation.'
+            : 'Your data is private and scoped to your account.'}
         </p>
       </div>
     </div>

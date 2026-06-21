@@ -99,3 +99,15 @@ def get_current_clinician(
         raise HTTPException(status_code=401, detail="Clinician not found")
 
     return clinician
+
+
+def require_admin(
+    clinician: Clinician = Depends(get_current_clinician),
+) -> Clinician:
+    """
+    FastAPI dependency — like get_current_clinician but also requires the
+    clinician to be a clinic admin. Used to guard clinic-management routes.
+    """
+    if clinician.clinic_id is None or (clinician.role or "therapist") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return clinician

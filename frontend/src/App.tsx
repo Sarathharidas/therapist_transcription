@@ -12,6 +12,8 @@ import { getSession, getAppointment } from './api/sessions';
 import { ResultsPanel } from './components/ResultsPanel';
 import { GroupSessionView } from './components/GroupSessionView';
 import { AppointmentView } from './components/AppointmentView';
+import { TeamView } from './components/TeamView';
+import { Building2 } from 'lucide-react';
 import type {
   Appointment,
   AppointmentDetail,
@@ -70,6 +72,12 @@ function AppInner() {
   const handleSelectPatient = (patient: Patient) => {
     setSelectedPatient(patient);
     setView('session');
+    setActiveSummaryId(undefined);
+    setSidebarOpen(false);
+  };
+
+  const handleOpenTeam = () => {
+    setView('team');
     setActiveSummaryId(undefined);
     setSidebarOpen(false);
   };
@@ -236,6 +244,8 @@ function AppInner() {
             >
               {view === 'select'
                 ? 'New Session'
+                : view === 'team'
+                ? `Clinic / ${clinician.clinicName ?? ''}`
                 : view === 'group-session'
                 ? `Appointment / ${appointment?.label ?? ''}`
                 : view === 'appointment'
@@ -261,6 +271,18 @@ function AppInner() {
                 <UserPlus className="size-3.5" />
                 <span className="hidden sm:inline">Add New Patient</span>
                 <span className="sm:hidden">Add</span>
+              </button>
+            )}
+
+            {/* Clinic / Team — only for clinic members */}
+            {clinician.clinicId && view !== 'team' && (
+              <button
+                onClick={handleOpenTeam}
+                title={clinician.clinicName ?? 'Clinic'}
+                className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+              >
+                <Building2 className="size-3.5" />
+                <span className="hidden sm:inline">{clinician.role === 'admin' ? 'Manage clinic' : 'Clinic'}</span>
               </button>
             )}
 
@@ -309,6 +331,9 @@ function AppInner() {
             onBack={handleNewSession}
             onFinish={handleFinishAppointment}
           />
+        )}
+        {view === 'team' && (
+          <TeamView clinician={clinician} />
         )}
         {view === 'appointment' && (
           appointmentLoading ? (

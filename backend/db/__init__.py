@@ -1,7 +1,10 @@
 """
 SQLAlchemy ORM models — mirrors the PostgreSQL schema exactly.
 
-clinicians          (clinician_id, email, name, google_id)
+clinics             (clinic_id, name, created_at)                          ← enterprise tenant
+clinic_invites      (invite_id, clinic_id FK, email, role, status,
+                     invited_by FK, created_at, accepted_at)               ← invite gate
+clinicians          (clinician_id, email, name, google_id, clinic_id FK, role)
 patients            (patient_id, name, clinician_id FK, created_at)
 groups              (group_id, clinician_id FK, label, created_at)        ← couple/family
 group_members       (group_id FK, patient_id FK)                          ← M2M
@@ -24,6 +27,57 @@ class Base(DeclarativeBase):
     pass
 
 
+class Clinic(Base):
+    """An enterprise tenant — a clinic that groups multiple clinicians."""
+    __tablename__ = "clinics"
+
+    clinic_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    name = Column(Text, nullable=False)
+    created_at = Column(
+        Text,
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+
+class ClinicInvite(Base):
+    """
+    A pre-authorized email for a clinic. Because Google verifies the email at
+    sign-in, an accepted invite needs no token/email delivery — matching a
+    pending invite to the verified Google email is enough to admit the user.
+    """
+    __tablename__ = "clinic_invites"
+
+    invite_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    clinic_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinics.clinic_id"),
+        nullable=False,
+    )
+    email = Column(Text, nullable=False)  # always stored lowercased
+    role = Column(Text, nullable=False, default="therapist")  # 'admin' | 'therapist'
+    status = Column(Text, nullable=False, default="pending")  # pending | accepted | revoked
+    invited_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinicians.clinician_id"),
+        nullable=True,
+    )
+    created_at = Column(
+        Text,
+        nullable=False,
+        server_default=text("now()"),
+    )
+    accepted_at = Column(Text, nullable=True)
+
+
 class Clinician(Base):
     __tablename__ = "clinicians"
 
@@ -35,6 +89,13 @@ class Clinician(Base):
     email = Column(Text, unique=True, nullable=False)
     name = Column(Text, nullable=False)
     google_id = Column(Text, unique=True, nullable=True)  # Google 'sub' claim
+    # Clinic membership — NULL = solo / grandfathered individual therapist
+    clinic_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinics.clinic_id"),
+        nullable=True,
+    )
+    role = Column(Text, nullable=False, default="therapist")  # 'admin' | 'therapist'
 
 
 class Patient(Base):

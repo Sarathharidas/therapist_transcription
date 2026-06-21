@@ -1,7 +1,36 @@
+export type ClinicianRole = 'admin' | 'therapist';
+
 export type Clinician = {
   id: string;
   name: string;
   email: string;
+  role: ClinicianRole;
+  clinicId?: string;
+  clinicName?: string;
+};
+
+// ── Clinic (enterprise) ────────────────────────────────────────────────────
+
+export type ClinicMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: ClinicianRole;
+};
+
+export type ClinicInvite = {
+  inviteId: string;
+  email: string;
+  role: ClinicianRole;
+  status: string;
+  createdAt: string;
+};
+
+export type Clinic = {
+  clinicId: string;
+  name: string;
+  members: ClinicMember[];
+  pendingInvites: ClinicInvite[];
 };
 
 export type Patient = {
@@ -87,5 +116,5 @@ export type JobStatus = {
   error: string | null;
 };
 
-export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment';
+export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment' | 'team';
 export type SessionPhase = 'ready' | 'recording' | 'submitting';
