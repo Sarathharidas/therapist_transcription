@@ -131,6 +131,33 @@ SEGMENTS:
 """
 
 
+def _names_hint(names: Optional[List[str]]) -> str:
+    """
+    Build a prompt fragment that tells Gemini who is in the room so it can use
+    real names instead of generic Patient N labels. Returns "" if no names.
+
+    - One name  → individual (1:1) segment: label every patient turn "Patient:".
+    - 2+ names  → joint segment: attribute to real names where context makes the
+      speaker clear; otherwise fall back to Patient 1 / Patient 2.
+    """
+    clean = [n.strip() for n in (names or []) if n and n.strip()]
+    if not clean:
+        return ""
+    if len(clean) == 1:
+        return (
+            f"\n\nCONTEXT: There is exactly one patient in this segment, named "
+            f"{clean[0]}. Label every one of their turns as \"Patient:\".\n"
+        )
+    listed = ", ".join(clean)
+    return (
+        f"\n\nCONTEXT: The patients present in this session are: {listed}. "
+        f"Use a patient's real first name as the speaker label (e.g. \"{clean[0]}:\") "
+        f"when context makes it clear who is speaking — for example when someone is "
+        f"addressed by name. When you cannot tell which patient is speaking, fall back "
+        f"to \"Patient 1:\", \"Patient 2:\", etc. Keep each person's label consistent.\n"
+    )
+
+
 class GeminiService:
     def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -256,21 +283,25 @@ class GeminiService:
         finally:
             self.delete_file(audio_file)
 
-    def normalize_transcript(self, chunk_transcripts: List[str]) -> str:
+    def normalize_transcript(self, chunk_transcripts: List[str],
+                             names_hint: Optional[List[str]] = None) -> str:
         """
         Single text-only Gemini call that unifies speaker labels across all chunks.
         Determines the full speaker roster globally, assigns Therapist/Patient roles
         based on content, and handles the case where some chunks have fewer speakers
         than others (e.g. Patient 2 only appears in certain segments).
-        Falls back to raw stitched transcript if the call fails.
+
+        When names_hint is provided, patient turns are labelled with real names
+        where the speaker is clear. Falls back to raw stitched transcript on error.
         """
         segments = "\n\n".join(
             f"[SEGMENT {i + 1}]\n{text}"
             for i, text in enumerate(chunk_transcripts)
         )
+        prompt = NORMALIZATION_PROMPT.format(segments=segments) + _names_hint(names_hint)
         print(f"[gemini] Normalizing transcript across {len(chunk_transcripts)} segments…")
         try:
-            unified = self._generate(NORMALIZATION_PROMPT.format(segments=segments))
+            unified = self._generate(prompt)
             print(f"[gemini] Normalized: {len(unified)} chars")
             return unified
         except Exception as exc:
@@ -278,7 +309,8 @@ class GeminiService:
             return "\n".join(chunk_transcripts)
 
     def transcribe_fast(self, audio_path: str, mime_type: str = "audio/webm",
-                        chunk_seconds: int = 300, max_workers: int = 6) -> str:
+                        chunk_seconds: int = 300, max_workers: int = 6,
+                        names_hint: Optional[List[str]] = None) -> str:
         """
         Transcribe audio, automatically chunking long files for parallel processing.
 
@@ -287,7 +319,13 @@ class GeminiService:
           Phase 2 — single text call: normalize labels, assign Therapist/Patient roles
 
         Short sessions or ffmpeg unavailable → original single-file path.
+
+        names_hint (optional): names of the patients present, used to label turns
+        with real names instead of generic Patient N. See _names_hint().
         """
+        # Single-file prompt with optional name hint appended
+        single_prompt = TRANSCRIPT_PROMPT + _names_hint(names_hint)
+
         duration = self._get_duration(audio_path)
         print(f"[gemini] Audio duration: {duration}s")
 
@@ -295,7 +333,7 @@ class GeminiService:
         if duration is None or duration < chunk_seconds:
             audio_file = self.upload_file(audio_path, mime_type)
             try:
-                return self.transcribe(audio_file, mime_type)
+                return self.transcribe(audio_file, mime_type, prompt=single_prompt)
             finally:
                 self.delete_file(audio_file)
 
@@ -306,7 +344,7 @@ class GeminiService:
             print(f"[gemini] Chunking failed ({e}), falling back to single-file")
             audio_file = self.upload_file(audio_path, mime_type)
             try:
-                return self.transcribe(audio_file, mime_type)
+                return self.transcribe(audio_file, mime_type, prompt=single_prompt)
             finally:
                 self.delete_file(audio_file)
 
@@ -325,7 +363,7 @@ class GeminiService:
                     results[idx] = text
 
             # Phase 2: unify speaker labels across all chunks in one text-only call
-            return self.normalize_transcript([t for t in results if t])
+            return self.normalize_transcript([t for t in results if t], names_hint=names_hint)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 

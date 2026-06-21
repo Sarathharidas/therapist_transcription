@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Lock, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Lock, Users, X } from 'lucide-react';
 import { listRecentSessions } from '../api/sessions';
 import type { Clinician, PastSession, Patient } from '../types';
 
@@ -31,7 +31,33 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
     return () => clearInterval(id);
   }, [refreshKey]);
 
-  const displayed = sessions.length > 0 ? sessions : [SAMPLE_SESSION];
+  // Collapse the segments of one appointment into a single entry. Each grouped
+  // entry uses the sessionId as its id, so clicking opens the appointment view.
+  const displayed = useMemo<PastSession[]>(() => {
+    if (sessions.length === 0) return [SAMPLE_SESSION];
+    const counts = new Map<string, number>();
+    for (const s of sessions) {
+      if (s.sessionId) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
+    }
+    const out: PastSession[] = [];
+    const added = new Set<string>();
+    for (const s of sessions) {
+      if (s.sessionId) {
+        if (added.has(s.sessionId)) continue;
+        added.add(s.sessionId);
+        const n = counts.get(s.sessionId) ?? 1;
+        out.push({
+          ...s,
+          id: s.sessionId,
+          patientName: s.sessionLabel ?? s.patientName,
+          noteSnippet: `${n} segment${n > 1 ? 's' : ''}`,
+        });
+      } else {
+        out.push(s);
+      }
+    }
+    return out;
+  }, [sessions]);
 
   return (
     <aside className="w-72 bg-sidebar border-r border-border flex flex-col h-full">
@@ -93,7 +119,10 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
             >
               {s.date}
             </div>
-            <div className="text-sm font-medium">{s.patientName}</div>
+            <div className="text-sm font-medium flex items-center gap-1.5">
+              {s.sessionId && <Users className="size-3 text-muted-foreground shrink-0" />}
+              {s.patientName}
+            </div>
             <div className="text-xs text-muted-foreground truncate">{s.noteSnippet}</div>
           </button>
         ))}

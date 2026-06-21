@@ -47,7 +47,17 @@ _db_session.engine = test_engine
 _db_session.SessionLocal = TestingSessionLocal
 
 # Now safe to import models
-from backend.db import Base, Clinician, Job, Patient, Summary  # noqa: E402
+from backend.db import (  # noqa: E402
+    AppointmentSession,
+    Base,
+    Clinician,
+    Group,
+    GroupMember,
+    Job,
+    Patient,
+    Summary,
+    SummaryParticipant,
+)
 
 
 # ── Adapt schema for SQLite ──────────────────────────────────────────────
@@ -102,7 +112,11 @@ def _clean_db_between_tests() -> Iterator[None]:
     try:
         # FK-respecting delete order
         db.query(Job).delete()
+        db.query(SummaryParticipant).delete()
         db.query(Summary).delete()
+        db.query(GroupMember).delete()
+        db.query(AppointmentSession).delete()
+        db.query(Group).delete()
         db.query(Patient).delete()
         db.query(Clinician).delete()
         db.commit()

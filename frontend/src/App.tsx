@@ -8,9 +8,19 @@ import { LoginPage } from './components/LoginPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { getMe, logout } from './api/auth';
 import { token } from './api/base';
-import { getSession } from './api/sessions';
+import { getSession, getAppointment } from './api/sessions';
 import { ResultsPanel } from './components/ResultsPanel';
-import type { AppView, Clinician, Patient, PastSession, SessionDetail } from './types';
+import { GroupSessionView } from './components/GroupSessionView';
+import { AppointmentView } from './components/AppointmentView';
+import type {
+  Appointment,
+  AppointmentDetail,
+  AppView,
+  Clinician,
+  Patient,
+  PastSession,
+  SessionDetail,
+} from './types';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -21,6 +31,10 @@ function AppInner() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [pastSession, setPastSession] = useState<SessionDetail | null>(null);
   const [pastSessionLoading, setPastSessionLoading] = useState(false);
+  // Group / couple therapy
+  const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [appointmentDetail, setAppointmentDetail] = useState<AppointmentDetail | null>(null);
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Sidebar refresh + active highlight
@@ -64,8 +78,34 @@ function AppInner() {
     setView('select');
     setSelectedPatient(null);
     setPastSession(null);
+    setAppointment(null);
+    setAppointmentDetail(null);
     setActiveSummaryId(undefined);
     setSidebarOpen(false);
+  };
+
+  // A group appointment has been started from PatientSelect
+  const handleSelectGroup = (appt: Appointment) => {
+    setAppointment(appt);
+    setView('group-session');
+    setActiveSummaryId(undefined);
+    setSidebarOpen(false);
+  };
+
+  // The clinician finished a group appointment — open its results view
+  const handleFinishAppointment = async (sessionId: string) => {
+    setAppointmentLoading(true);
+    setAppointmentDetail(null);
+    setView('appointment');
+    setActiveSummaryId(undefined);
+    setSidebarRefreshKey((k) => k + 1);
+    try {
+      setAppointmentDetail(await getAppointment(sessionId));
+    } catch {
+      handleNewSession();
+    } finally {
+      setAppointmentLoading(false);
+    }
   };
 
   // Called by SessionView once audio is submitted — the backend transcribes in the
@@ -88,11 +128,30 @@ function AppInner() {
   }, [processingNotice]);
 
   const handleSelectSession = async (session: PastSession) => {
+    setSidebarOpen(false);
+
+    // Grouped appointment → open the appointment view (all segments)
+    if (session.sessionId) {
+      setActiveSummaryId(session.sessionId);
+      setAppointmentLoading(true);
+      setAppointmentDetail(null);
+      setView('appointment');
+      try {
+        setAppointmentDetail(await getAppointment(session.sessionId));
+      } catch {
+        setView('select');
+        setActiveSummaryId(undefined);
+      } finally {
+        setAppointmentLoading(false);
+      }
+      return;
+    }
+
+    // Solo session → single summary detail
     setPastSessionLoading(true);
     setPastSession(null);
     setView('past-session');
     setActiveSummaryId(session.id);
-    setSidebarOpen(false);
     try {
       const detail = await getSession(session.id);
       setPastSession(detail);
@@ -177,6 +236,10 @@ function AppInner() {
             >
               {view === 'select'
                 ? 'New Session'
+                : view === 'group-session'
+                ? `Appointment / ${appointment?.label ?? ''}`
+                : view === 'appointment'
+                ? `Appointment / ${appointmentDetail?.label ?? ''}`
                 : `Session / ${selectedPatient?.name ?? ''}`}
             </div>
           </div>
@@ -231,7 +294,7 @@ function AppInner() {
         )}
 
         {view === 'select' && (
-          <PatientSelect onSelect={handleSelectPatient} />
+          <PatientSelect onSelect={handleSelectPatient} onSelectGroup={handleSelectGroup} />
         )}
         {view === 'session' && (
           <SessionView
@@ -239,6 +302,25 @@ function AppInner() {
             onBack={handleNewSession}
             onProcessingStarted={handleProcessingStarted}
           />
+        )}
+        {view === 'group-session' && appointment && (
+          <GroupSessionView
+            appointment={appointment}
+            onBack={handleNewSession}
+            onFinish={handleFinishAppointment}
+          />
+        )}
+        {view === 'appointment' && (
+          appointmentLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <svg className="size-6 animate-spin text-accent" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          ) : appointmentDetail ? (
+            <AppointmentView appointment={appointmentDetail} />
+          ) : null
         )}
         {view === 'past-session' && (
           pastSessionLoading ? (

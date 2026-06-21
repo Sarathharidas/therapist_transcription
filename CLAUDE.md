@@ -66,7 +66,8 @@ Therapist Transcripts/
 │   │   └── seed.py               # Seeds clinician from .env on startup; caches UUID
 │   ├── routes/
 │   │   ├── patients.py           # GET/POST /api/patients
-│   │   └── sessions.py           # POST /api/sessions/process
+│   │   ├── groups.py             # GET/POST /api/groups (couples/families)
+│   │   └── sessions.py           # appointment + segmented /process + appointment detail
 │   └── services/
 │       └── gemini.py             # GeminiService — upload, transcribe, summarise
 │
@@ -81,11 +82,13 @@ Therapist Transcripts/
         │   ├── patients.ts       # listPatients(), createPatient()
         │   └── sessions.ts       # processSession(audio, patientId)
         ├── components/
-        │   ├── App.tsx           # Root — view state: 'select' | 'session'
-        │   ├── PatientSelect.tsx # Patient search/create with dropdown
-        │   ├── SessionView.tsx   # Recording controls + processing stages
-        │   ├── ResultsPanel.tsx  # Split view: transcript (left) + summary (right)
-        │   └── Sidebar.tsx       # Left nav
+        │   ├── App.tsx              # Root — views: select | session | group-session | appointment | past-session
+        │   ├── PatientSelect.tsx    # Individual / Couple·Group tabs; group builder
+        │   ├── SessionView.tsx      # Solo recording controls + processing stages
+        │   ├── GroupSessionView.tsx # Segmented recording (joint / 1:1) for an appointment
+        │   ├── AppointmentView.tsx  # Appointment results — segments + per-person confidentiality filter
+        │   ├── ResultsPanel.tsx     # Split view: transcript (left) + summary (right)
+        │   └── Sidebar.tsx          # Left nav — collapses appointment segments into one entry
         ├── hooks/
         │   └── useRecorder.ts    # MediaRecorder wrapper — start/stop/blob/reset
         ├── types.ts              # Shared TypeScript types
@@ -123,15 +126,62 @@ summaries (
 Tables are created automatically on startup via `Base.metadata.create_all()`.
 The clinician row is seeded from `CLINICIAN_EMAIL` / `CLINICIAN_NAME` in `.env`.
 
+### Group / couple therapy tables
+
+```sql
+groups (
+  group_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinician_id  UUID REFERENCES clinicians(clinician_id) NOT NULL,
+  label         TEXT NOT NULL,                   -- e.g. "Asha & Ravi"
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+
+group_members (                                  -- M2M: group ↔ patients
+  group_id      UUID REFERENCES groups(group_id),
+  patient_id    UUID REFERENCES patients(patient_id),
+  PRIMARY KEY (group_id, patient_id)
+)
+
+sessions (                                       -- one appointment (a visit)
+  session_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinician_id  UUID REFERENCES clinicians(clinician_id) NOT NULL,
+  group_id      UUID REFERENCES groups(group_id),    -- NULL = solo appointment
+  label         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+
+summary_participants (                           -- M2M: who was present in a segment
+  summary_id    UUID REFERENCES summaries(summary_id),
+  patient_id    UUID REFERENCES patients(patient_id),
+  PRIMARY KEY (summary_id, patient_id)
+)
+```
+
+`summaries` and `jobs` also gained columns for segment metadata:
+`summaries.session_id`, `summaries.segment_type` (`joint` | `individual` | `solo`),
+and `jobs.session_id`, `jobs.segment_type`, `jobs.participant_ids` (comma-separated UUIDs).
+A summary = **one recorded segment**; a `sessions` row groups the segments of one visit.
+Legacy solo summaries have `session_id = NULL` / `segment_type = NULL` and behave unchanged.
+
+**Migrations:** new tables are created by `create_all()`. The new *columns* on the
+pre-existing `summaries`/`jobs` tables are added by idempotent `ALTER TABLE ... ADD
+COLUMN IF NOT EXISTS` statements in `main.py:_run_column_migrations()` (Postgres only;
+SQLite test DB is created fresh from the models).
+
 ---
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/patients` | List all patients for the seeded clinician, newest first |
+| `GET` | `/api/patients` | List all patients for the authenticated clinician, newest first |
 | `POST` | `/api/patients` | Create a patient `{ name: string }` → returns `PatientOut` |
-| `POST` | `/api/sessions/process` | Form: `audio` (file) + `patient_id` (str) → `SessionResult` |
+| `GET` | `/api/groups` | List groups (couples/families) with members |
+| `POST` | `/api/groups` | Create a group `{ label, patient_ids[] }` (2+ members) → `GroupOut` |
+| `POST` | `/api/sessions/appointment` | Start a visit `{ group_id? , participant_ids?[], label? }` → `AppointmentOut` (`session_id`) |
+| `POST` | `/api/sessions/process` | Form: `audio` + `patient_id` (+ optional `session_id`, `segment_type`, `participant_ids`) → `{ job_id }` (202) |
+| `GET` | `/api/sessions/recent` | Recent segments; grouped rows carry `session_id` / `session_label` / `segment_type` |
+| `GET` | `/api/sessions/appointment/{id}` | An appointment with all its segments + per-segment participants |
 
 **`PatientOut`** (JSON):
 ```json
@@ -142,6 +192,22 @@ The clinician row is seeded from `CLINICIAN_EMAIL` / `CLINICIAN_NAME` in `.env`.
 ```json
 { "transcript": "string", "summary": "string", "patient_id": "uuid", "summary_id": "uuid" }
 ```
+
+### Group / couple therapy workflow
+
+A single appointment can involve 2+ people who are seen **jointly** and **one-on-one**
+within the same visit. The clinician records each portion as its own segment, tagged
+with who's in the room — so confidentiality is explicit, not guessed:
+
+1. Pick (or create) a **group** in `PatientSelect` → `POST /api/sessions/appointment`
+   returns a `session_id` for the visit.
+2. In `GroupSessionView`, before each recording the clinician chooses **Joint
+   (everyone)** or **Individual: <name>**; each Stop submits a segment via
+   `/process` with `session_id` + `segment_type` + `participant_ids`.
+3. `gemini.py` receives the participant names as a hint (`_names_hint`) so joint
+   transcripts use real first names; an individual segment is labelled `Patient:`.
+4. `AppointmentView` groups the segments. A **per-person filter** shows joint
+   segments + that person's own 1:1 only — a partner's private 1:1 is never mixed in.
 
 ---
 

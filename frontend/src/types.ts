@@ -16,6 +16,51 @@ export type PastSession = {
   patientName: string;
   date: string;
   noteSnippet: string;
+  // Appointment grouping — set for couple/family visits, undefined for solo
+  sessionId?: string;
+  sessionLabel?: string;
+  segmentType?: SegmentType;
+};
+
+// ── Group / couple therapy ────────────────────────────────────────────────
+
+export type SegmentType = 'joint' | 'individual' | 'solo';
+
+export type GroupMember = {
+  id: string;       // patient_id
+  name: string;
+  initials: string;
+};
+
+export type Group = {
+  id: string;       // group_id
+  label: string;
+  members: GroupMember[];
+};
+
+// An in-progress appointment (returned when a visit is started)
+export type Appointment = {
+  sessionId: string;
+  label: string;
+  participants: GroupMember[];
+};
+
+export type Segment = {
+  summaryId: string;
+  segmentType: SegmentType;
+  participants: GroupMember[];
+  transcript: string;
+  summary: string;
+  clinicianNotes: string | null;
+  date: string;
+};
+
+export type AppointmentDetail = {
+  sessionId: string;
+  label: string;
+  date: string;
+  participants: GroupMember[];
+  segments: Segment[];
 };
 
 export type SessionResult = {
@@ -42,5 +87,5 @@ export type JobStatus = {
   error: string | null;
 };
 
-export type AppView = 'select' | 'session' | 'past-session';
+export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment';
 export type SessionPhase = 'ready' | 'recording' | 'submitting';

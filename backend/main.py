@@ -22,6 +22,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 from backend.db import Base                                    # noqa: E402
 from backend.db.session import engine, get_db                  # noqa: E402
 from backend.routes.auth import router as auth_router          # noqa: E402
+from backend.routes.groups import router as groups_router      # noqa: E402
 from backend.routes.patients import router as patients_router  # noqa: E402
 from backend.routes.sessions import router as sessions_router  # noqa: E402
 
@@ -87,13 +88,38 @@ def health(db: Session = Depends(get_db)):
 # ── API routes ─────────────────────────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(patients_router)
+app.include_router(groups_router)
 app.include_router(sessions_router)
+
+
+# ── Lightweight, idempotent column migrations ─────────────────────────────
+# create_all() adds new TABLES but never ALTERs existing ones. These ADD COLUMN
+# IF NOT EXISTS statements bring older `summaries`/`jobs` tables up to date for
+# the group/couple-therapy feature. Postgres-only — on SQLite (tests) the tables
+# are created fresh from the models so the columns already exist.
+_COLUMN_MIGRATIONS = (
+    "ALTER TABLE summaries ADD COLUMN IF NOT EXISTS session_id UUID",
+    "ALTER TABLE summaries ADD COLUMN IF NOT EXISTS segment_type TEXT",
+    "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS session_id UUID",
+    "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS segment_type TEXT",
+    "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS participant_ids TEXT",
+)
+
+
+def _run_column_migrations() -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        for stmt in _COLUMN_MIGRATIONS:
+            conn.execute(text(stmt))
+    print("[startup] Column migrations applied")
 
 
 # ── Startup: create tables ─────────────────────────────────────────────────
 @app.on_event("startup")
 def on_startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _run_column_migrations()
     print("[startup] Database tables ready")
 
 
