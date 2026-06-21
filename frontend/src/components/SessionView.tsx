@@ -192,8 +192,8 @@ function RecordingIdleView({
         </h2>
         <p className="text-muted-foreground text-sm sm:text-base px-4">
           {phase === 'recording'
-            ? 'Speak naturally. The session is being recorded privately.'
-            : `Tap the microphone to start recording with ${patientName}.`}
+            ? 'Speak naturally. The session is being listened in privately.'
+            : `Tap the microphone to start listening with ${patientName}.`}
         </p>
       </div>
     </div>
