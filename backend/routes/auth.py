@@ -115,52 +115,69 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
 
     # ── Clinic path — must match a registered clinic by name ─────────────────
     if body.mode == "clinic":
-        clinic = _clinic_by_name(db, body.clinic_name or "")
+        entered = (body.clinic_name or "").strip()
+
+        # 1) Existing member → match against THEIR OWN clinic's name (robust even
+        #    if two clinics ever shared a name).
+        if clinician is not None and clinician.clinic_id is not None:
+            own = db.query(Clinic).filter(Clinic.clinic_id == clinician.clinic_id).first()
+            if own is not None and own.name.strip().casefold() == entered.casefold():
+                if clinician.google_id is None:
+                    clinician.google_id = google_id
+                clinician.name = name
+                db.commit()
+                db.refresh(clinician)
+                access_token = create_jwt(str(clinician.clinician_id))
+                return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your account is part of {own.name if own else 'another clinic'}, "
+                       f"not {entered or 'that clinic'}.",
+            )
+
+        # 2) New email OR an existing solo account → resolve the clinic by name and
+        #    require a pending invite for it (lets a prior individual user accept a
+        #    later clinic invitation).
+        clinic = _clinic_by_name(db, entered)
         if clinic is None:
             raise HTTPException(
                 status_code=403,
                 detail="No clinic found with that name — check the name with your admin.",
             )
+        invite = (
+            db.query(ClinicInvite)
+            .filter(
+                ClinicInvite.email == email_lc,
+                ClinicInvite.clinic_id == clinic.clinic_id,
+                ClinicInvite.status == "pending",
+            )
+            .first()
+        )
+        if invite is None:
+            raise HTTPException(
+                status_code=403,
+                detail=f"No invitation found for {email} in {clinic.name} — ask your admin.",
+            )
 
         if clinician is not None:
-            # Existing account must already belong to this clinic
-            if clinician.clinic_id != clinic.clinic_id:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Your account isn't part of {clinic.name}.",
-                )
+            # Promote the existing solo account into the clinic (keeps their data)
+            clinician.clinic_id = clinic.clinic_id
+            clinician.role = invite.role
             if clinician.google_id is None:
                 clinician.google_id = google_id
             clinician.name = name
-            db.commit()
-            db.refresh(clinician)
         else:
-            # New email — must have a pending invite for THIS clinic
-            invite = (
-                db.query(ClinicInvite)
-                .filter(
-                    ClinicInvite.email == email_lc,
-                    ClinicInvite.clinic_id == clinic.clinic_id,
-                    ClinicInvite.status == "pending",
-                )
-                .first()
-            )
-            if invite is None:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"No invitation found for {email} in {clinic.name} — ask your admin.",
-                )
             clinician = Clinician(
                 email=email, name=name, google_id=google_id,
                 clinic_id=clinic.clinic_id, role=invite.role,
             )
             db.add(clinician)
             db.flush()
-            invite.status = "accepted"
-            invite.accepted_at = datetime.now(tz=timezone.utc).isoformat()
-            db.commit()
-            db.refresh(clinician)
-            print(f"[auth] {email} joined clinic {clinic.name}")
+        invite.status = "accepted"
+        invite.accepted_at = datetime.now(tz=timezone.utc).isoformat()
+        db.commit()
+        db.refresh(clinician)
+        print(f"[auth] {email} joined clinic {clinic.name}")
 
         access_token = create_jwt(str(clinician.clinician_id))
         return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))

@@ -114,6 +114,29 @@ def test_member_login_requires_matching_name(client, clinic, clinic_admin):
     assert bad.status_code == 403
 
 
+def test_existing_solo_account_accepts_clinic_invite(client, db, clinic):
+    """A prior individual user who is later invited can join via the clinic path."""
+    solo = Clinician(
+        clinician_id=uuid.uuid4(), email="dual@brightminds.com", name="Dr. Dual",
+        google_id="g-dual", clinic_id=None, role="therapist",
+    )
+    db.add(solo)
+    db.commit()
+    _invite(db, clinic, "dual@brightminds.com", role="therapist")
+
+    claims = _claims("g-dual", "dual@brightminds.com", "Dr. Dual")
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Bright Minds",
+        })
+    assert resp.status_code == 200
+    assert resp.json()["clinician"]["clinic_id"] == str(clinic.clinic_id)
+    db.refresh(solo)
+    assert solo.clinic_id == clinic.clinic_id
+    inv = db.query(ClinicInvite).filter(ClinicInvite.email == "dual@brightminds.com").first()
+    assert inv.status == "accepted"
+
+
 def test_revoked_invite_blocks_clinic_login(client, db, clinic):
     _invite(db, clinic, "revoked@brightminds.com", status="revoked")
     claims = _claims("g-revoked", "revoked@brightminds.com")
