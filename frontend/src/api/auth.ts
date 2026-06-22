@@ -31,16 +31,40 @@ function toClinician(c: ClinicianOut): Clinician {
 
 type LoginResult = { accessToken: string; clinician: Clinician };
 
-// Exchange Google credential for app JWT + clinician info
-export async function googleLogin(credential: string, mode: LoginMode = 'individual'): Promise<LoginResult> {
+// Exchange Google credential for app JWT + clinician info.
+// For mode='clinic', clinicName is required and must match a registered clinic.
+export async function googleLogin(
+  credential: string,
+  mode: LoginMode = 'individual',
+  clinicName?: string,
+): Promise<LoginResult> {
   const resp = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential, mode }),
+    body: JSON.stringify({ credential, mode, clinic_name: clinicName }),
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error((err as { detail?: string }).detail ?? `Login failed: ${resp.status}`);
+  }
+  const data = (await resp.json()) as LoginResponseOut;
+  return { accessToken: data.access_token, clinician: toClinician(data.clinician) };
+}
+
+// Self-serve clinic registration — the Google user becomes the clinic admin.
+export async function registerClinic(
+  credential: string,
+  clinicName: string,
+  therapistEmails: string[],
+): Promise<LoginResult> {
+  const resp = await fetch(`${API_BASE}/api/auth/register-clinic`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential, clinic_name: clinicName, therapist_emails: therapistEmails }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `Registration failed: ${resp.status}`);
   }
   const data = (await resp.json()) as LoginResponseOut;
   return { accessToken: data.access_token, clinician: toClinician(data.clinician) };

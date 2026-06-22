@@ -40,7 +40,19 @@ def test_auth_config_true_with_clinic(client, clinic):
 def test_clinic_login_rejected_without_invite(client, clinic):
     claims = _claims("g-uninvited", "stranger@brightminds.com")
     with patch("backend.routes.auth.verify_google_token", return_value=claims):
-        resp = client.post("/api/auth/login", json={"credential": "x", "mode": "clinic"})
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Bright Minds",
+        })
+    assert resp.status_code == 403
+
+
+def test_clinic_login_unknown_clinic_name(client, clinic):
+    """Even an invited email is rejected when the clinic name doesn't resolve."""
+    claims = _claims("g-x", "stranger@brightminds.com")
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Nonexistent Clinic",
+        })
     assert resp.status_code == 403
 
 
@@ -59,7 +71,9 @@ def test_invited_email_admitted_to_clinic(client, db, clinic):
     _invite(db, clinic, "newdoc@brightminds.com", role="therapist")
     claims = _claims("g-newdoc", "NewDoc@brightminds.com", "Dr. New")
     with patch("backend.routes.auth.verify_google_token", return_value=claims):
-        resp = client.post("/api/auth/login", json={"credential": "x", "mode": "clinic"})
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "bright minds",  # case-insensitive
+        })
     assert resp.status_code == 200
     body = resp.json()
     assert body["clinician"]["clinic_id"] == str(clinic.clinic_id)
@@ -71,12 +85,97 @@ def test_invited_email_admitted_to_clinic(client, db, clinic):
     assert inv.status == "accepted"
 
 
+def test_invited_email_rejected_with_wrong_clinic_name(client, db, clinic):
+    """Right email, wrong clinic name → 403 (name must match records)."""
+    _invite(db, clinic, "newdoc@brightminds.com")
+    other = Clinic(clinic_id=uuid.uuid4(), name="Calm Co", created_at="2026-01-01T00:00:00")
+    db.add(other)
+    db.commit()
+    claims = _claims("g-newdoc", "newdoc@brightminds.com")
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Calm Co",
+        })
+    assert resp.status_code == 403  # no invite for this email in Calm Co
+
+
+def test_member_login_requires_matching_name(client, clinic, clinic_admin):
+    """An existing member must enter their own clinic's name."""
+    claims = _claims(clinic_admin.google_id, clinic_admin.email, clinic_admin.name)
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        ok = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Bright Minds",
+        })
+        bad = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Some Other Clinic",
+        })
+    assert ok.status_code == 200
+    assert ok.json()["clinician"]["role"] == "admin"
+    assert bad.status_code == 403
+
+
 def test_revoked_invite_blocks_clinic_login(client, db, clinic):
     _invite(db, clinic, "revoked@brightminds.com", status="revoked")
     claims = _claims("g-revoked", "revoked@brightminds.com")
     with patch("backend.routes.auth.verify_google_token", return_value=claims):
-        resp = client.post("/api/auth/login", json={"credential": "x", "mode": "clinic"})
+        resp = client.post("/api/auth/login", json={
+            "credential": "x", "mode": "clinic", "clinic_name": "Bright Minds",
+        })
     assert resp.status_code == 403
+
+
+# ── POST /api/auth/register-clinic ────────────────────────────────────────
+
+def test_register_clinic_creates_admin_and_invites(client, db):
+    claims = _claims("g-founder", "founder@newclinic.com", "Dr. Founder")
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/register-clinic", json={
+            "credential": "x",
+            "clinic_name": "New Clinic",
+            "therapist_emails": ["a@newclinic.com", "B@newclinic.com", "founder@newclinic.com"],
+        })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["clinician"]["role"] == "admin"
+    assert body["clinician"]["clinic_name"] == "New Clinic"
+    assert body["access_token"]
+
+    clinic = db.query(Clinic).filter(Clinic.name == "New Clinic").first()
+    # Two invites — the admin's own email is skipped, B lowercased
+    invites = db.query(ClinicInvite).filter(ClinicInvite.clinic_id == clinic.clinic_id).all()
+    assert {i.email for i in invites} == {"a@newclinic.com", "b@newclinic.com"}
+    assert all(i.role == "therapist" and i.status == "pending" for i in invites)
+
+
+def test_register_duplicate_clinic_name_rejected(client, clinic):
+    claims = _claims("g-dup", "dup@x.com", "Dr. Dup")
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/register-clinic", json={
+            "credential": "x", "clinic_name": "Bright Minds", "therapist_emails": [],
+        })
+    assert resp.status_code == 409
+
+
+def test_register_rejected_if_already_in_clinic(client, clinic_admin):
+    claims = _claims(clinic_admin.google_id, clinic_admin.email, clinic_admin.name)
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/register-clinic", json={
+            "credential": "x", "clinic_name": "Another Clinic", "therapist_emails": [],
+        })
+    assert resp.status_code == 409
+
+
+def test_register_promotes_existing_solo_account(client, db, clinician):
+    """A solo clinician registering a clinic becomes its admin (data kept)."""
+    claims = _claims(clinician.google_id, clinician.email, clinician.name)
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post("/api/auth/register-clinic", json={
+            "credential": "x", "clinic_name": "Solo Founder Clinic", "therapist_emails": [],
+        })
+    assert resp.status_code == 201
+    db.refresh(clinician)
+    assert clinician.role == "admin"
+    assert clinician.clinic_id is not None
 
 
 # ── Invite management (admin-only) ────────────────────────────────────────

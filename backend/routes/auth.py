@@ -6,7 +6,7 @@ Auth routes
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -29,6 +29,14 @@ class GoogleLoginRequest(BaseModel):
     # Which login path the user picked. Defaults to 'individual' so existing
     # callers/tests keep today's open-signup behaviour.
     mode: str = "individual"  # 'individual' | 'clinic'
+    # Required for mode='clinic' — must match the registered clinic name
+    clinic_name: Optional[str] = None
+
+
+class ClinicRegisterRequest(BaseModel):
+    credential: str            # Google ID token of the registering admin
+    clinic_name: str
+    therapist_emails: List[str] = []
 
 
 class ClinicianOut(BaseModel):
@@ -66,6 +74,14 @@ def _clinician_out(db: Session, clinician: Clinician) -> ClinicianOut:
     )
 
 
+def _clinic_by_name(db: Session, name: str) -> Optional[Clinic]:
+    """Resolve a clinic by name, case-insensitive and trimmed."""
+    n = (name or "").strip()
+    if not n:
+        return None
+    return db.query(Clinic).filter(Clinic.name.ilike(n)).first()
+
+
 @router.get("/config", response_model=AuthConfigOut)
 def auth_config(db: Session = Depends(get_db)):
     """Public — tells the login screen whether to offer the clinic sign-in path."""
@@ -78,11 +94,12 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
     """
     Verify the Google credential and resolve the clinician for the chosen path.
 
-    Decision tree (mode defaults to 'individual'):
-      - existing clinician      → return as-is, regardless of mode (grandfathered)
-      - new email + pending invite → admit to that clinic (any mode)
-      - new email, no invite, individual → auto-register a solo account (today's flow)
-      - new email, no invite, clinic     → 403, must be invited
+    mode='individual' (default, UNCHANGED):
+      - existing clinician → return as-is
+      - new email          → auto-register a solo account
+    mode='clinic' (requires a matching clinic_name):
+      - resolve the clinic by name; existing member → allow; invited email → admit;
+        otherwise 403.
     """
     claims = verify_google_token(body.credential)
 
@@ -96,8 +113,60 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
     if clinician is None:
         clinician = db.query(Clinician).filter(Clinician.email == email).first()
 
+    # ── Clinic path — must match a registered clinic by name ─────────────────
+    if body.mode == "clinic":
+        clinic = _clinic_by_name(db, body.clinic_name or "")
+        if clinic is None:
+            raise HTTPException(
+                status_code=403,
+                detail="No clinic found with that name — check the name with your admin.",
+            )
+
+        if clinician is not None:
+            # Existing account must already belong to this clinic
+            if clinician.clinic_id != clinic.clinic_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Your account isn't part of {clinic.name}.",
+                )
+            if clinician.google_id is None:
+                clinician.google_id = google_id
+            clinician.name = name
+            db.commit()
+            db.refresh(clinician)
+        else:
+            # New email — must have a pending invite for THIS clinic
+            invite = (
+                db.query(ClinicInvite)
+                .filter(
+                    ClinicInvite.email == email_lc,
+                    ClinicInvite.clinic_id == clinic.clinic_id,
+                    ClinicInvite.status == "pending",
+                )
+                .first()
+            )
+            if invite is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"No invitation found for {email} in {clinic.name} — ask your admin.",
+                )
+            clinician = Clinician(
+                email=email, name=name, google_id=google_id,
+                clinic_id=clinic.clinic_id, role=invite.role,
+            )
+            db.add(clinician)
+            db.flush()
+            invite.status = "accepted"
+            invite.accepted_at = datetime.now(tz=timezone.utc).isoformat()
+            db.commit()
+            db.refresh(clinician)
+            print(f"[auth] {email} joined clinic {clinic.name}")
+
+        access_token = create_jwt(str(clinician.clinician_id))
+        return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
+
+    # ── Individual path (UNCHANGED) ──────────────────────────────────────────
     if clinician is not None:
-        # Returning sign-in — backfill google_id if missing, refresh name
         if clinician.google_id is None:
             clinician.google_id = google_id
         clinician.name = name
@@ -107,40 +176,14 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
         access_token = create_jwt(str(clinician.clinician_id))
         return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
-    # ── New email — look for a pending clinic invite ──────────────────────────
-    invite = (
-        db.query(ClinicInvite)
-        .filter(ClinicInvite.email == email_lc, ClinicInvite.status == "pending")
-        .first()
-    )
-
-    if invite is None and body.mode == "clinic":
-        raise HTTPException(
-            status_code=403,
-            detail=f"No clinic invitation found for {email} — ask your clinic admin to invite you.",
-        )
-
-    # Build the new clinician: solo (no invite) or attached to the invite's clinic
-    new_clinician = Clinician(
-        email=email,
-        name=name,
-        google_id=google_id,
-        clinic_id=invite.clinic_id if invite else None,
-        role=invite.role if invite else "therapist",
-    )
+    new_clinician = Clinician(email=email, name=name, google_id=google_id)
     db.add(new_clinician)
     try:
-        db.flush()  # assign clinician_id so we can stamp the invite
-        if invite is not None:
-            invite.status = "accepted"
-            invite.accepted_at = datetime.now(tz=timezone.utc).isoformat()
         db.commit()
         db.refresh(new_clinician)
         clinician = new_clinician
-        where = f"clinic {invite.clinic_id}" if invite else "solo"
-        print(f"[auth] New clinician registered ({where}): {name} <{email}>")
+        print(f"[auth] New clinician registered (solo): {name} <{email}>")
     except IntegrityError:
-        # Race: a parallel first sign-in won. Recover by re-querying.
         db.rollback()
         print(f"[auth] Race on first sign-in for {email} — re-querying")
         clinician = (
@@ -153,6 +196,69 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
                 status_code=500,
                 detail="Failed to create account — please try again",
             )
+
+    access_token = create_jwt(str(clinician.clinician_id))
+    return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
+
+
+@router.post("/register-clinic", response_model=LoginResponse, status_code=201)
+def register_clinic(body: ClinicRegisterRequest, db: Session = Depends(get_db)):
+    """
+    Self-serve clinic creation. The Google user becomes the clinic admin and the
+    provided teammate emails become pending invites. Returns a JWT (logged in).
+    """
+    claims = verify_google_token(body.credential)
+    google_id: str = claims["sub"]
+    email: str = claims.get("email", "")
+    name: str = claims.get("name", email)
+    email_lc = email.lower()
+
+    clinic_name = (body.clinic_name or "").strip()
+    if not clinic_name:
+        raise HTTPException(status_code=422, detail="Clinic name is required")
+    if _clinic_by_name(db, clinic_name) is not None:
+        raise HTTPException(status_code=409, detail="A clinic with that name already exists")
+
+    # Resolve the registrant — promote a solo account or create a fresh admin
+    clinician = db.query(Clinician).filter(Clinician.google_id == google_id).first()
+    if clinician is None:
+        clinician = db.query(Clinician).filter(Clinician.email == email).first()
+    if clinician is not None and clinician.clinic_id is not None:
+        raise HTTPException(status_code=409, detail="You already belong to a clinic")
+
+    clinic = Clinic(name=clinic_name)
+    db.add(clinic)
+    db.flush()  # assign clinic_id
+
+    if clinician is not None:
+        clinician.clinic_id = clinic.clinic_id
+        clinician.role = "admin"
+        if clinician.google_id is None:
+            clinician.google_id = google_id
+        clinician.name = name
+    else:
+        clinician = Clinician(
+            email=email, name=name, google_id=google_id,
+            clinic_id=clinic.clinic_id, role="admin",
+        )
+        db.add(clinician)
+    db.flush()
+
+    # Pending invites for each distinct teammate email (skip the admin's own)
+    seen = set()
+    for raw in body.therapist_emails:
+        e = (raw or "").strip().lower()
+        if not e or "@" not in e or e == email_lc or e in seen:
+            continue
+        seen.add(e)
+        db.add(ClinicInvite(
+            clinic_id=clinic.clinic_id, email=e, role="therapist",
+            status="pending", invited_by=clinician.clinician_id,
+        ))
+
+    db.commit()
+    db.refresh(clinician)
+    print(f"[auth] Clinic registered: {clinic_name} by {email} ({len(seen)} invites)")
 
     access_token = create_jwt(str(clinician.clinician_id))
     return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))

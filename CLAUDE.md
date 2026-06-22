@@ -186,8 +186,9 @@ SQLite test DB is created fresh from the models).
 | `POST` | `/api/sessions/process` | Form: `audio` + `patient_id` (+ optional `session_id`, `segment_type`, `participant_ids`) → `{ job_id }` (202) |
 | `GET` | `/api/sessions/recent` | Recent segments; grouped rows carry `session_id` / `session_label` / `segment_type` |
 | `GET` | `/api/sessions/appointment/{id}` | An appointment with all its segments + per-segment participants |
-| `POST` | `/api/auth/login` | Google credential `{ credential, mode? }` (`individual`\|`clinic`) → JWT + clinician |
-| `GET` | `/api/auth/config` | Public — `{ clinic_enabled }` so the login screen can show the clinic path |
+| `POST` | `/api/auth/login` | `{ credential, mode?, clinic_name? }` (`individual`\|`clinic`) → JWT + clinician |
+| `POST` | `/api/auth/register-clinic` | Public — `{ credential, clinic_name, therapist_emails[] }` → creates clinic, admin, invites; JWT |
+| `GET` | `/api/auth/config` | Public — `{ clinic_enabled }` (login screen no longer gates on it) |
 | `GET` | `/api/clinic` | Clinic name + members + pending invites (clinic members) |
 | `POST` | `/api/clinic/invites` | *(admin)* Invite `{ email, role }` |
 | `DELETE` | `/api/clinic/invites/{id}` | *(admin)* Revoke a pending invite |
@@ -231,15 +232,21 @@ Two login paths coexist on one deployment, chosen on the login screen:
 Key points:
 - **Data is NOT shared.** A clinic is a login/membership boundary only; every therapist's
   patients/sessions stay scoped to their own `clinician_id` exactly as before.
-- **Invite-only, no email infra.** An admin adds a teammate's email
-  (`POST /api/clinic/invites`). Because Google verifies the email at sign-in, matching a
-  `pending` `clinic_invite` to the verified email is enough to admit them — no magic links.
-- **Login decision tree** (`routes/auth.py:google_login`, `mode` defaults to `individual`):
-  existing clinician → return as-is; new email + pending invite → join that clinic;
-  new email + no invite + individual → solo signup; new email + no invite + clinic → 403.
-- **Bootstrap** the first clinic + admin from `CLINIC_NAME` / `CLINIC_ADMIN_EMAIL`
-  (`main.py:_bootstrap_clinic`). Roles are `admin` | `therapist`; `require_admin`
-  (`services/auth.py`) guards management routes. Admin UI is `TeamView.tsx`.
+- **Self-serve registration.** Clinic tab → **Register clinic**: Google sign-in, then name
+  the clinic + add N teammate emails (`POST /api/auth/register-clinic`, `ClinicRegister.tsx`).
+  The registrant becomes `admin`; the emails become `pending` invites. Clinic names are
+  unique (case-insensitive).
+- **Clinic login matches name + email.** Clinic tab → **Login**: Google sign-in + clinic
+  name. `routes/auth.py:google_login` (mode `clinic`) resolves the clinic by name
+  (`_clinic_by_name`, `ilike`), then admits an existing member of that clinic or a
+  pending-invited email; otherwise 403. The **individual** mode path is unchanged
+  (existing → return; new → solo signup).
+- **No email infra.** Because Google verifies the email, matching a `pending`
+  `clinic_invite` to the verified email is enough to admit a therapist — no magic links.
+- Roles are `admin` | `therapist`; `require_admin` (`services/auth.py`) guards
+  `/api/clinic/*` management; admins manage members/invites in `TeamView.tsx`.
+- `main.py:_bootstrap_clinic` (env `CLINIC_NAME`/`CLINIC_ADMIN_EMAIL`) remains as an
+  optional legacy bootstrap; self-serve registration is the primary path.
 
 ---
 
