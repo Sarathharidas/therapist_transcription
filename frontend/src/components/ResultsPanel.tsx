@@ -32,11 +32,55 @@ function CopyButton({ text }: { text: string }) {
 function renderSummary(text: string): string {
   const esc = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return esc(text)
-    .split(/\n{2,}/)
-    .filter((p) => p.trim())
-    .map((p) => `<p class="mb-4 last:mb-0">${p.replace(/\n/g, ' ').trim()}</p>`)
-    .join('');
+  // Inline: **bold** → <strong>. "Not discussed" is dimmed so filled fields stand out.
+  const inline = (s: string) =>
+    esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+      .replace(/Not discussed/g, '<span class="text-muted-foreground/60 italic">Not discussed</span>');
+
+  const lines = text.split('\n');
+  const html: string[] = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      html.push('</ul>');
+      inList = false;
+    }
+  };
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      closeList();
+      continue;
+    }
+    // ## / ### headings
+    const h = line.match(/^(#{2,3})\s+(.*)$/);
+    if (h) {
+      closeList();
+      const cls =
+        h[1].length === 2
+          ? 'text-sm font-semibold text-foreground mt-5 mb-2 first:mt-0 pb-1 border-b border-border/50'
+          : 'text-[13px] font-semibold text-foreground mt-3 mb-1';
+      html.push(`<h4 class="${cls}">${inline(h[2])}</h4>`);
+      continue;
+    }
+    // - bullet list items
+    const li = line.match(/^[-*]\s+(.*)$/);
+    if (li) {
+      if (!inList) {
+        html.push('<ul class="space-y-1 mb-3">');
+        inList = true;
+      }
+      html.push(`<li>${inline(li[1])}</li>`);
+      continue;
+    }
+    // paragraph
+    closeList();
+    html.push(`<p class="mb-3 last:mb-0">${inline(line)}</p>`);
+  }
+  closeList();
+  return html.join('');
 }
 
 function stripTimestamps(text: string): string {

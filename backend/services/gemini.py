@@ -55,11 +55,92 @@ Rules:
 """
 
 SUMMARY_TEMPLATE = """
-You are an experienced clinical psychologist.
+You are an experienced clinical psychologist completing an **OP Case Sheet** (a
+standard psychiatric intake / assessment record) from a therapy session transcript.
 
-Read the therapy session transcript below and write a concise plain-language summary
-of what was discussed. Write it as 2–4 flowing paragraphs — no headings, no bullet
-points, no subheadings. Just a clear, natural summary of the session.
+Read the transcript below and fill in the case sheet using the EXACT structure given
+in the OUTPUT FORMAT. This is a clinical document, not a narrative summary.
+
+GROUND RULES — read carefully:
+- Use ONLY information that is actually present in the transcript. Never invent,
+  assume, or infer facts that were not stated (no fabricated dates, ages, diagnoses,
+  test scores, or history).
+- A single session rarely covers every field. For ANY field the transcript does not
+  provide, write exactly: Not discussed
+- Reproduce EVERY section and field heading below, even when the value is
+  "Not discussed", so the document stays complete and the clinician can fill the rest.
+- Be concise and clinical. Use the patient's own words in quotes for complaints,
+  delusions, and mood ("verbatim") where relevant.
+- Output GitHub-flavoured Markdown ONLY — use the headings exactly as shown.
+- Do NOT add any preamble, closing remarks, or commentary outside the case sheet.
+
+OUTPUT FORMAT (reproduce exactly, filling values after each colon):
+
+## Socio-Demographic Details
+- **Date:** Not discussed
+- **Name:** Not discussed
+- **Age / Sex / DOB:** Not discussed
+- **Occupation:** Not discussed
+- **Education:** Not discussed
+- **Marital Status:** Not discussed
+- **Language:** Not discussed
+- **Religion:** Not discussed
+- **Socio-economic status / Urban-Rural:** Not discussed
+- **Informant & reliability:** Not discussed
+
+## Complaints and Their Duration
+List each presenting complaint with its duration (use bullet points). If none stated,
+write "Not discussed".
+
+## History of Present Illness
+- **Onset:** Not discussed
+- **Duration:** Not discussed
+- **Precipitating factors:** Not discussed
+- **Course of illness:** Not discussed
+- **Associated disturbances:** Not discussed
+- **Negative history (medical):** Not discussed
+
+## Past History
+- **Treatment history:** Not discussed
+- **Past psychiatric & medical history:** Not discussed
+
+## Family History
+- **Family structure (3-generation):** Not discussed
+- **Medical illness in family:** Not discussed
+- **Psychiatric illness in family:** Not discussed
+
+## Developmental & Social History
+- **Birth & early development:** Not discussed
+- **Developmental milestones / childhood behaviour:** Not discussed
+- **Schooling (initiation, performance, exit):** Not discussed
+- **College (initiation, performance, exit):** Not discussed
+- **Occupation (satisfaction, work atmosphere, job changes):** Not discussed
+- **Menstrual / sexual history:** Not discussed
+- **Marital history:** Not discussed
+- **Family atmosphere & living situation:** Not discussed
+- **Substance use (alcohol / tobacco / drugs):** Not discussed
+
+## Premorbid Personality
+- **Attitude to others & to self:** Not discussed
+- **Moral / religious attitudes:** Not discussed
+- **Mood (baseline):** Not discussed
+- **Leisure activities & interests:** Not discussed
+- **Reaction pattern to stress:** Not discussed
+- **Habits & social style:** Not discussed
+
+## Mental Status Examination
+- **General appearance & behaviour:** Not discussed
+- **Speech (tone, tempo, volume, relevancy):** Not discussed
+- **Thought (content, form, stream, possession):** Not discussed
+- **Mood & affect:** Not discussed
+- **Perceptual disturbances:** Not discussed
+- **Cognitive functions (attention, orientation, memory):** Not discussed
+- **Judgment & insight:** Not discussed
+
+## Diagnostic Formulation
+- **Summary:** A brief 2–4 sentence clinical synthesis of what was learned in this
+  session (this section should always be filled from the transcript).
+- **Suggestion:** Recommended next steps / plan if any were discussed, else "Not discussed".
 
 TRANSCRIPT:
 {transcript}

@@ -11,6 +11,7 @@ PATCH /api/sessions/{summary_id}/notes — save clinician notes
 """
 
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -127,6 +128,39 @@ def _format_date(created_at_str) -> str:
 
 def _initials(name: str) -> str:
     return "".join(w[0] for w in name.split() if w)[:2].upper()
+
+
+def _summary_snippet(text: str, limit: int = 60) -> str:
+    """
+    Build a clean one-line preview from a Markdown OP Case Sheet summary.
+
+    Prefers the clinical "Summary:" line under Diagnostic Formulation; otherwise
+    falls back to the first meaningful line. Strips Markdown markup either way so
+    the sidebar never shows raw '##' / '**' / '- ' characters.
+    """
+    if not text:
+        return ""
+
+    def strip_md(s: str) -> str:
+        s = re.sub(r"^\s*#{1,6}\s*", "", s)        # heading markers
+        s = re.sub(r"^\s*[-*]\s*", "", s)          # bullet markers
+        s = s.replace("**", "").replace("*", "")   # bold/italic
+        return s.strip()
+
+    # Prefer the Diagnostic Formulation summary value when it carries real content.
+    m = re.search(r"\*\*Summary:\*\*\s*(.+)", text)
+    if m:
+        candidate = strip_md(m.group(1))
+        if candidate and candidate.lower() != "not discussed":
+            return candidate[:limit] + ("…" if len(candidate) > limit else "")
+
+    # Fallback: first non-empty, non-"Not discussed" line.
+    for line in text.splitlines():
+        cleaned = strip_md(line)
+        if cleaned and cleaned.lower() != "not discussed":
+            return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
+
+    return strip_md(text)[:limit]
 
 
 def _participant_out(p: Patient) -> ParticipantOut:
@@ -430,8 +464,7 @@ def list_recent_sessions(
     )
     result = []
     for summary, patient, appt in rows:
-        text = summary.ai_summary or ""
-        snippet = text[:60] + ("…" if len(text) > 60 else "")
+        snippet = _summary_snippet(summary.ai_summary or "")
         result.append(RecentSessionOut(
             summary_id=str(summary.summary_id),
             patient_name=patient.name,

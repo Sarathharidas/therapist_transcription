@@ -18,7 +18,12 @@ Aura Clinical is a browser-based tool for therapists to record sessions, transcr
 **Key domain facts:**
 - Sessions are in Malayalam + English (code-switching / Manglish). Gemini translates everything to English.
 - Transcript format: `Therapist: ...` / `Patient: ...` speaker labels on every turn
-- Summary format: 2–4 plain paragraphs, no headings or bullet points
+- Summary format: a structured **OP Case Sheet** (psychiatric intake) in Markdown —
+  fixed sections (socio-demographic → MSE → diagnostic formulation); fields the
+  transcript doesn't cover are marked "Not discussed". Prompt: `SUMMARY_TEMPLATE`
+  in `services/gemini.py`; rendered by `renderSummary()` in `ResultsPanel.tsx`
+  (lightweight Markdown → HTML, no library). The `Format/` folder holds the source
+  case-sheet scans this structure was derived from.
 - Single clinician per deployment — seeded from `.env` on startup, no auth system yet
 - No audio is stored permanently — the Gemini Files API file is deleted after processing
 
