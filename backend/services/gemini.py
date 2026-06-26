@@ -54,96 +54,292 @@ Rules:
 - Output ONLY the transcript — no preamble, no commentary, no explanation
 """
 
-SUMMARY_TEMPLATE = """
-You are an experienced clinical psychologist completing an **OP Case Sheet** (a
-standard psychiatric intake / assessment record) from a therapy session transcript.
+# The editable default. A therapist may override this per-account
+# (clinicians.summary_format); when they haven't, this is used. The summarizer
+# fills the ____ blanks from the transcript and marks anything absent as
+# "Not discussed". Keep this as a pure Markdown skeleton — the clinical
+# instructions live in SUMMARY_INSTRUCTIONS below, not here.
+DEFAULT_SUMMARY_FORMAT = """# OP CASE SHEET
+**MINDWORLD — Mental Health Clinic and Training Centre**
 
-Read the transcript below and fill in the case sheet using the EXACT structure given
-in the OUTPUT FORMAT. This is a clinical document, not a narrative summary.
+> Template for psychiatric outpatient case documentation / therapy notes.
+> Fields marked with `____` are to be filled in. Option lists separated by `/` indicate
+> select-one-or-more choices — strike through or delete the options that do not apply.
 
-GROUND RULES — read carefully:
-- Use ONLY information that is actually present in the transcript. Never invent,
-  assume, or infer facts that were not stated (no fabricated dates, ages, diagnoses,
-  test scores, or history).
-- A single session rarely covers every field. For ANY field the transcript does not
-  provide, write exactly: Not discussed
-- Reproduce EVERY section and field heading below, even when the value is
-  "Not discussed", so the document stays complete and the clinician can fill the rest.
-- Be concise and clinical. Use the patient's own words in quotes for complaints,
-  delusions, and mood ("verbatim") where relevant.
-- Output GitHub-flavoured Markdown ONLY — use the headings exactly as shown.
-- Do NOT add any preamble, closing remarks, or commentary outside the case sheet.
-
-OUTPUT FORMAT (reproduce exactly, filling values after each colon):
+---
 
 ## Socio-Demographic Details
-- **Date:** Not discussed
-- **Name:** Not discussed
-- **Age / Sex / DOB:** Not discussed
-- **Occupation:** Not discussed
-- **Education:** Not discussed
-- **Marital Status:** Not discussed
-- **Language:** Not discussed
-- **Religion:** Not discussed
-- **Socio-economic status / Urban-Rural:** Not discussed
-- **Informant & reliability:** Not discussed
+
+- **Date:** ____
+- **Name:** ____
+- **Age:** ____  **Sex:** ____  **DOB:** ____
+- **Phone number:** ____  **Email id:** ____
+- **Education:** ____  **Occupation:** ____
+- **Marital Status:** ____
+- **Language:** ____  **Religion:** ____
+- **Monthly income:** ____
+- **Socio-economic status:** ____  **Urban / Rural:** ____
+- **Informant:** ____
+- **Reliability and adequacy:** ____
 
 ## Complaints and Their Duration
-List each presenting complaint with its duration (use bullet points). If none stated,
-write "Not discussed".
+____
 
 ## History of Present Illness
-- **Onset:** Not discussed
-- **Duration:** Not discussed
-- **Precipitating factors:** Not discussed
-- **Course of illness:** Not discussed
-- **Associated disturbances:** Not discussed
-- **Negative history (medical):** Not discussed
+- **Onset:** ____
+- **Duration:** ____
+- **Precipitating factors:** ____
 
-## Past History
-- **Treatment history:** Not discussed
-- **Past psychiatric & medical history:** Not discussed
+### Course of Illness
+- **(a) Associated disturbance:** ____
+- **(b) Negative history — Medical history:** DM / HT / IHD / epilepsy / head injury / fever and headache / CSOM / jaundice / thyroid / bronchial asthma / others. — ____
+- **(c) Treatment history:** ____
+- **(d) Past psychiatric and medical history:** ____
+- **(e) Family History:** ____
 
-## Family History
-- **Family structure (3-generation):** Not discussed
-- **Medical illness in family:** Not discussed
-- **Psychiatric illness in family:** Not discussed
+### 3-Generation Genogram (should include consanguinity)
+> Draw genogram. Note relationships and any psychological illness.
+____
 
-## Developmental & Social History
-- **Birth & early development:** Not discussed
-- **Developmental milestones / childhood behaviour:** Not discussed
-- **Schooling (initiation, performance, exit):** Not discussed
-- **College (initiation, performance, exit):** Not discussed
-- **Occupation (satisfaction, work atmosphere, job changes):** Not discussed
-- **Menstrual / sexual history:** Not discussed
-- **Marital history:** Not discussed
-- **Family atmosphere & living situation:** Not discussed
-- **Substance use (alcohol / tobacco / drugs):** Not discussed
+- **Medical illness in family:** HT / DM / asthma / allergy / blood dyscrasias / epilepsy. — ____
+- **Psychiatric illness in family:** suicide / attempted suicide / DSH / whereabouts not known / living alone / alcoholism / substance abuse / divorce / separated / frequent change of job / frequent change of domicile / litiginous behavior / extremes of life style / psychiatric consultations / mental retardation. — ____
 
-## Premorbid Personality
-- **Attitude to others & to self:** Not discussed
-- **Moral / religious attitudes:** Not discussed
-- **Mood (baseline):** Not discussed
-- **Leisure activities & interests:** Not discussed
-- **Reaction pattern to stress:** Not discussed
-- **Habits & social style:** Not discussed
+---
+
+## Developmental and Social History
+
+### Birth and Early Development
+- **Antenatal:** wanted / planned / accidental / legitimate / natural / assisted / rejected / illegitimate / others. — ____
+- **Perinatal:** natural / assisted / home / hospital / forceps / caesarian / complications / birth injury / jaundice / cried immediately / kept in incubator / full term / premature / fits / others. — ____
+- **Postnatal:** ____
+- **Developmental history (developmental milestones):** ____
+- **Behavior during childhood:** ____
+
+### Schooling
+- **Initiation:** ____
+- **Performance:** ____
+- **Exit:** ____
+
+### College
+- **Initiation:** ____
+- **Performance:** ____
+- **Exit:** ____
+
+### Occupation
+- **Satisfied / not satisfied:** ____
+- **Remuneration:** happy / unhappy — ____
+- **Work culture:** ____
+- **Work atmosphere:** ____
+- **Any promotions:** ____
+- **Any punishments:** ____
+- **Change of jobs (if yes, why? how often?):** ____
+
+### Menstrual History
+- **Age of menarche:** ____
+- **Age at menopause:** ____
+- **Cycle length:** regular / irregular — ____
+- **Flow:** normal / abnormal (explain) — ____
+- **Last menstrual period:** ____
+- **Any other abnormalities:** ____
+
+### Sexual History
+- **Knowledge, any complaints and practices:** ____
+
+### Marital History
+- **Marriage:** ____
+- **Type:** ____
+- **Familiarity:** familiar / unfamiliar / known / unknown — ____
+- **Partner's age / reactions to marriage / any religious, cultural, communal conflicts:** ____
+- **Spouse reaction:** ____
+- **Any separation / divorce / others:** ____
+
+### Family Size
+- **Includes children:** ____
+
+### Family Atmosphere and Life Situation
+- **About the domicile:** own / rented / no. of rooms / others — ____
+- **Family size:** ____
+- **Head of the family:** ____
+- **Family income:** ____
+- **Dominant / submissive roles of family members:** ____
+- **Deciding person:** ____
+- **Contribution to family:** ____
+- **Others' contribution:** ____
+- **Interaction in the family:** ____
+- **Any pathology in the family:** ____
+- **Physical illness during childhood:** ____
+- **Use and abuse of alcohol, tobacco, and drugs:** ____
+
+### Premorbid Personality
+1. **Attitude to others in social, family and sexual relationships:** ____
+2. **Attitude to self:** ____
+3. **Moral and religious attitudes and standards:** ____
+4. **Mood:** ____
+5. **Leisure activities and interests:** ____
+6. **Fantasy life:** ____
+7. **Reaction pattern to stress:** ____
+8. **Biological functions and habits:** ____
+
+- **Interests:** ____
+- **Disposition:** social / friendly / lonely / alone / reserved — ____
+- **Habits, fads, beliefs, cults:** ____
+- **Initiative:** ____
+- **Leadership:** ____
+- **Follower:** ____
+- **Risk taking:** ____
+- **Sensation seeking:** ____
+- **Risk avoidance:** ____
+- **Leisure time activities:** ____
+- **Hobbies:** ____
+- **Religious:** ____
+- **Values:** ____
+- **Drugs:** ____
+- **Traits:** ____
+- **Daily routine:** ____
+- **Others:** ____
+
+---
 
 ## Mental Status Examination
-- **General appearance & behaviour:** Not discussed
-- **Speech (tone, tempo, volume, relevancy):** Not discussed
-- **Thought (content, form, stream, possession):** Not discussed
-- **Mood & affect:** Not discussed
-- **Perceptual disturbances:** Not discussed
-- **Cognitive functions (attention, orientation, memory):** Not discussed
-- **Judgment & insight:** Not discussed
+
+### General Appearance
+- **Personal Identification:** ____
+- **How the patient entered the room:** ____
+- **Conscious:** ____
+- **Co-operative:** ____
+- **Rapport:** ____
+- **Eye-to-eye contact:** ____
+- **Grooming:** kempt / moderately kempt / ill-kempt — ____
+
+### Behavior and Psychomotor Activity
+**Speech:**
+- **Tone / tempo / volume:** ____
+- **Reaction time:** ____
+- **Relevancy:** ____
+
+**Thought** (obtain a neutral speech sample): ____
+
+**Disorder of Content of Thought**
+- Depressive and anxious cognition, delusions and overvalued ideas, made act, affect impulse: ____
+
+**Delusions**
+- **Verbatim** (false, firm, fixed, shared / unshared, culturally unaccepted): ____
+- **Primary / secondary:** ____
+- **Single / multiple:** ____
+- **Systematization:** ____
+- **Elaboration:** ____
+- **Bizarreness:** ____
+- **Form:** ____
+- **Mood congruous** (in primary mood disorder alone): ____
+- **Acting out behavior:** ____
+
+**Disorder of Form of Thought**
+- Positive formal thought disorders: derailment, tangentiality, neologism, loosening of association
+- Negative FTD: poverty of speech, poverty of content of speech
+- Notes: ____
+
+**Disorder of Stream of Thought**
+- Flight of ideas, prolixity, slowness of thinking, circumstantiality, perseveration, thought blocking
+- Notes: ____
+
+**Disorder of Possession of Thought**
+- Obsession, compulsion, thought broadcast, thought insertion, withdrawal
+- Notes: ____
+
+### Mood
+- **Subjective mood:** ____
+- **Objective mood:** ____
+- **Quantify:** ____
+- **Qualify** (range, reactivity, liability, appropriateness, and congruency): ____
+- **Affect:** ____
+
+### Perceptual Disturbance
+(Illusion, hallucination, depersonalization, and congruency)
+
+**Hallucinations**
+- **Clear consciousness:** ____
+- **Involuntary:** ____
+- **Modality:** ____
+- **Objective / subjective:** ____
+- **Distance:** ____
+- **Continuous with the surroundings:** ____
+- **Clear as normal:** ____
+- **I / II / III PAH (number of persons):** ____
+- **Content:** ____
+- **Acting out:** ____
+- **Frequency:** ____
+- **Distress:** ____
+- **Special kinds:** ____
+
+### Cognitive Functions
+**A) Attention and Concentration**
+- **Serial subtraction test:** ____
+- **Telling the days of week backwards:** ____
+- **Digit span test** — Forward: 5±2 → ____  Backward: 3±2 → ____
+
+**B) Orientation**
+- **Time, place, person:** ____
+
+**C) Memory**
+- **Immediate** (digit span): ____
+- **Recent memory** (past few days): ____
+  - Address test: ____
+  - Delayed recall of 4 objects: ____
+  - Recalling events in past 24 hrs: ____
+- **Remote memory** — personal backgrounds (if no past details available to cross-check, ask important events of history in the past): ____
+
+**General Information**
+- **Intelligence:**
+  - a) General Intelligence: ____
+  - b) Comprehension: ____
+  - c) Arithmetic: ____
+- **Abstract ability:**
+  - Similarities: ____
+  - Differences: ____
+  - Proverb test: ____
+
+### Judgment
+- **Personal judgment:** ____
+- **Social:** ____
+- **Test judgment:** ____
+
+### Insight
+- **Grading:** ____
+- **Level of insight:** ____
+
+---
 
 ## Diagnostic Formulation
-- **Summary:** A brief 2–4 sentence clinical synthesis of what was learned in this
-  session (this section should always be filled from the transcript).
-- **Suggestion:** Recommended next steps / plan if any were discussed, else "Not discussed".
+- **Summary:** ____
+- **Suggestion:** ____
+
+---
+
+**Assessed By:** ____
+**Signature:** ____
+"""
+
+# Fixed clinical wrapper around the (possibly customised) format. These rules are
+# NOT therapist-editable so a bad format edit can't break summary quality.
+SUMMARY_INSTRUCTIONS = """You are an experienced clinical psychologist completing a structured case sheet / therapy note from a therapy session transcript.
+
+Read the transcript and fill in the TEMPLATE provided below, following its EXACT structure, headings, and order. This is a clinical document, not a narrative summary.
+
+GROUND RULES — read carefully:
+- Use ONLY information that is actually present in the transcript. Never invent, assume, or infer facts that were not stated (no fabricated dates, ages, diagnoses, test scores, or history).
+- The template contains blank fields shown as "____". Replace each "____" with the relevant information drawn from the transcript.
+- For any field the transcript does not cover, write exactly: Not discussed
+- For option lists separated by "/" (e.g. "own / rented / others"), keep only the option(s) supported by the transcript and state the finding; if none are mentioned, write: Not discussed
+- Reproduce EVERY section and field heading from the template, even when the value is "Not discussed", so the document stays complete for the clinician to finish.
+- Be concise and clinical. Quote the patient's own words ("verbatim") for complaints, delusions, and mood where relevant.
+- Output GitHub-flavoured Markdown ONLY, preserving the template's headings and structure.
+- Do NOT keep the template's instructional blockquote lines (the "> Template for..." guidance). Do NOT add any preamble, closing remarks, or commentary outside the document.
+
+TEMPLATE TO FILL:
+<<<FORMAT>>>
 
 TRANSCRIPT:
-{transcript}
+<<<TRANSCRIPT>>>
 """
 
 # Used for each individual chunk in parallel transcription.
@@ -302,10 +498,23 @@ class GeminiService:
         print(f"[gemini] Transcript: {len(transcript)} chars")
         return transcript
 
-    def summarize(self, transcript: str) -> str:
-        """Generate plain-language clinical summary from transcript text."""
+    def summarize(self, transcript: str, fmt: Optional[str] = None) -> str:
+        """
+        Generate a structured clinical case-sheet summary from transcript text.
+
+        fmt: the therapist's custom format skeleton (Markdown). When None or blank,
+        the built-in DEFAULT_SUMMARY_FORMAT is used. The fixed clinical instructions
+        in SUMMARY_INSTRUCTIONS always wrap the format and are not editable.
+        """
+        template = fmt if (fmt and fmt.strip()) else DEFAULT_SUMMARY_FORMAT
+        # Use .replace() (not .format()) so braces in the transcript/template don't break.
+        prompt = (
+            SUMMARY_INSTRUCTIONS
+            .replace("<<<FORMAT>>>", template)
+            .replace("<<<TRANSCRIPT>>>", transcript)
+        )
         print("[gemini] Summarising…")
-        summary = self._generate(SUMMARY_TEMPLATE.format(transcript=transcript))
+        summary = self._generate(prompt)
         print("[gemini] Summary done.")
         return summary
 

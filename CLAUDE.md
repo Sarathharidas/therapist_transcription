@@ -19,11 +19,15 @@ Aura Clinical is a browser-based tool for therapists to record sessions, transcr
 - Sessions are in Malayalam + English (code-switching / Manglish). Gemini translates everything to English.
 - Transcript format: `Therapist: ...` / `Patient: ...` speaker labels on every turn
 - Summary format: a structured **OP Case Sheet** (psychiatric intake) in Markdown —
-  fixed sections (socio-demographic → MSE → diagnostic formulation); fields the
-  transcript doesn't cover are marked "Not discussed". Prompt: `SUMMARY_TEMPLATE`
-  in `services/gemini.py`; rendered by `renderSummary()` in `ResultsPanel.tsx`
-  (lightweight Markdown → HTML, no library). The `Format/` folder holds the source
-  case-sheet scans this structure was derived from.
+  fields the transcript doesn't cover are marked "Not discussed". The format is
+  **editable per therapist**: `DEFAULT_SUMMARY_FORMAT` (the Markdown skeleton) in
+  `services/gemini.py` is the default; a therapist can override it via the **Format**
+  button on the home screen (`SummaryFormatDialog.tsx` → `PUT /api/settings/summary-format`),
+  stored on `clinicians.summary_format` (NULL = use default). The fixed clinical
+  instructions wrapping the format (`SUMMARY_INSTRUCTIONS`) are NOT editable. The job
+  runner resolves the owning therapist's format at summarize time. Rendered by
+  `renderSummary()` in `ResultsPanel.tsx` (lightweight Markdown → HTML, no library).
+  The `Format/` folder holds the source case-sheet scans this structure was derived from.
 - Single clinician per deployment — seeded from `.env` on startup, no auth system yet
 - No audio is stored permanently — the Gemini Files API file is deleted after processing
 
@@ -74,7 +78,8 @@ Therapist Transcripts/
 │   │   ├── patients.py           # GET/POST /api/patients
 │   │   ├── groups.py             # GET/POST /api/groups (couples/families)
 │   │   ├── clinic.py             # clinic members + invites (enterprise)
-│   │   └── sessions.py           # appointment + segmented /process + appointment detail
+│   │   ├── sessions.py           # appointment + segmented /process + appointment detail
+│   │   └── settings.py           # per-therapist summary-format (GET/PUT)
 │   └── services/
 │       └── gemini.py             # GeminiService — upload, transcribe, summarise
 │
@@ -87,7 +92,8 @@ Therapist Transcripts/
         ├── api/
         │   ├── base.ts           # API_BASE = VITE_API_URL ?? '' (empty = use proxy)
         │   ├── patients.ts       # listPatients(), createPatient()
-        │   └── sessions.ts       # processSession(audio, patientId)
+        │   ├── sessions.ts       # processSession(audio, patientId)
+        │   └── settings.ts       # getSummaryFormat(), saveSummaryFormat()
         ├── components/
         │   ├── App.tsx              # Root — views: select | session | group-session | appointment | past-session
         │   ├── PatientSelect.tsx    # Individual / Couple·Group tabs; group builder
@@ -96,6 +102,7 @@ Therapist Transcripts/
         │   ├── AppointmentView.tsx  # Appointment results — segments + per-person confidentiality filter
         │   ├── LoginPage.tsx        # Google sign-in with Individual / Clinic path selector
         │   ├── TeamView.tsx         # Clinic admin: members, invites, roles
+        │   ├── SummaryFormatDialog.tsx # Edit the per-therapist case-sheet format
         │   ├── ResultsPanel.tsx     # Split view: transcript (left) + summary (right)
         │   └── Sidebar.tsx          # Left nav — collapses appointment segments into one entry
         ├── hooks/
@@ -194,6 +201,8 @@ SQLite test DB is created fresh from the models).
 | `POST` | `/api/auth/login` | `{ credential, mode?, clinic_name? }` (`individual`\|`clinic`) → JWT + clinician |
 | `POST` | `/api/auth/register-clinic` | Public — `{ credential, clinic_name, therapist_emails[] }` → creates clinic, admin, invites; JWT |
 | `GET` | `/api/auth/config` | Public — `{ clinic_enabled }` (login screen no longer gates on it) |
+| `GET` | `/api/settings/summary-format` | Therapist's effective summary format `{ format, is_default, default }` |
+| `PUT` | `/api/settings/summary-format` | Save a custom format `{ format }` (empty string = reset to default) |
 | `GET` | `/api/clinic` | Clinic name + members + pending invites (clinic members) |
 | `POST` | `/api/clinic/invites` | *(admin)* Invite `{ email, role }` |
 | `DELETE` | `/api/clinic/invites/{id}` | *(admin)* Revoke a pending invite |

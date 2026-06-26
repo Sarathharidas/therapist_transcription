@@ -12,7 +12,7 @@ response has been sent to the client.
 import os
 import uuid
 
-from backend.db import Job, Patient, Summary, SummaryParticipant
+from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant
 from backend.db.session import SessionLocal
 from backend.services.gemini import get_service
 
@@ -77,7 +77,15 @@ def run_job(job_id: str) -> None:
         db.commit()
         print(f"[job_runner] {job_id} → summarizing")
 
-        summary_text = service.summarize(transcript)
+        # Use the owning therapist's custom case-sheet format when set; else default.
+        clinician = (
+            db.query(Clinician)
+            .join(Patient, Patient.clinician_id == Clinician.clinician_id)
+            .filter(Patient.patient_id == job.patient_id)
+            .first()
+        )
+        summary_fmt = clinician.summary_format if clinician else None
+        summary_text = service.summarize(transcript, fmt=summary_fmt)
 
         # ── Save result to summaries table ───────────────────────────────
         summary_row = Summary(

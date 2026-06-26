@@ -96,6 +96,9 @@ class Clinician(Base):
         nullable=True,
     )
     role = Column(Text, nullable=False, default="therapist")  # 'admin' | 'therapist'
+    # Custom summary/case-sheet format for this therapist. NULL = use the
+    # built-in DEFAULT_SUMMARY_FORMAT. Edited via /api/settings/summary-format.
+    summary_format = Column(Text, nullable=True)
 
 
 class Patient(Base):

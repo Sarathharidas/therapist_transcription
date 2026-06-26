@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import { LogOut, Menu, UserPlus, X } from 'lucide-react';
+import { FileText, LogOut, Menu, UserPlus, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { PatientSelect } from './components/PatientSelect';
 import { SessionView } from './components/SessionView';
@@ -13,6 +13,7 @@ import { ResultsPanel } from './components/ResultsPanel';
 import { GroupSessionView } from './components/GroupSessionView';
 import { AppointmentView } from './components/AppointmentView';
 import { TeamView } from './components/TeamView';
+import { SummaryFormatDialog } from './components/SummaryFormatDialog';
 import { Building2 } from 'lucide-react';
 import type {
   Appointment,
@@ -38,6 +39,8 @@ function AppInner() {
   const [appointmentDetail, setAppointmentDetail] = useState<AppointmentDetail | null>(null);
   const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Summary-format editor dialog (home screen)
+  const [formatOpen, setFormatOpen] = useState(false);
 
   // Sidebar refresh + active highlight
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
@@ -263,6 +266,18 @@ function AppInner() {
               {clinician.name}
             </span>
 
+            {/* Summary format editor — sits just left of Add on the home screen */}
+            {view === 'select' && (
+              <button
+                onClick={() => setFormatOpen(true)}
+                title="Edit summary format"
+                className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+              >
+                <FileText className="size-3.5" />
+                <span className="hidden sm:inline">Format</span>
+              </button>
+            )}
+
             {view === 'select' && (
               <button
                 onClick={() => {/* handled inside PatientSelect */}}
@@ -370,6 +385,9 @@ function AppInner() {
           ) : null
         )}
       </main>
+
+      {/* Summary-format editor dialog */}
+      {formatOpen && <SummaryFormatDialog onClose={() => setFormatOpen(false)} />}
     </div>
   );
 }
