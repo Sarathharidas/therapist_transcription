@@ -345,6 +345,23 @@ Open **http://localhost:5173**
 | `UUID(as_uuid=True)` + `server_default=text("gen_random_uuid()")` | psycopg2 rejects bare UUID strings; must wrap with `uuid.UUID()` before insert |
 | Transcript stored as `transcription` column, summary as `ai_summary` | Column names in DB — don't rename without a migration |
 | Audio sent as `audio/webm` (MediaRecorder default on Chrome/Firefox) | Backend saves to `.webm` temp file; Gemini accepts this mime type |
+| MediaRecorder capped at `audioBitsPerSecond: 32000` | Speech needs little bitrate; ~4–8× smaller uploads → fewer long-upload timeouts (`useRecorder.ts`) |
+| Upload streamed to disk in 1 MB chunks (not `await audio.read()`) | Flat memory regardless of session length; avoids OOM on large files (`sessions.py` `/process`) |
+
+### Upload reliability (long-audio "Load failed")
+
+Long sessions on slow/flaky uplinks could drop mid-upload — the browser showed
+"Load failed" and the recording was **lost** (no Job row created). Hardening:
+- **Stream to disk** in `/process` — chunked write, size cap enforced as it goes,
+  partial temp file cleaned up on failure.
+- **Client retry + timeout** — `submitSession` retries transport-level failures
+  (the "Load failed" rejection / abort) up to 3× with backoff via `AbortController`;
+  HTTP errors (413/429/…) are *not* retried.
+- **Recording preserved on failure** — `SessionView` / `GroupSessionView` keep the
+  recorded blob in a `'failed'` phase with **Retry upload** / **Discard** instead of
+  discarding it. The `beforeunload` guard also covers `'failed'`.
+- Larger architectural fix (chunked/resumable upload) is deliberately deferred —
+  see "Phase 2" discussion; revisit only if failures persist after the above.
 
 ---
 

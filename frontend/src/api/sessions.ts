@@ -23,33 +23,69 @@ export type SegmentMeta = {
  * For a group/couple segment, pass `meta` so the result is tagged to the
  * appointment and the confidentiality access list is recorded.
  */
+// Long uploads over slow/flaky uplinks occasionally fail at the transport layer
+// (the browser rejects fetch with "Load failed"/"Failed to fetch", or the request
+// hangs). We retry ONLY those — never an HTTP error response (413/429/404 are
+// deterministic). A generous timeout backstops a truly hung request.
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 min — backstop, not an SLA
+const UPLOAD_MAX_ATTEMPTS = 3;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function submitSession(
   audio: Blob,
   patientId: string,
   meta?: SegmentMeta,
 ): Promise<string> {
-  const form = new FormData();
-  form.append('audio', audio, 'session.webm');
-  form.append('patient_id', patientId);
-  if (meta) {
-    form.append('session_id', meta.sessionId);
-    form.append('segment_type', meta.segmentType);
-    form.append('participant_ids', meta.participantIds.join(','));
+  const buildForm = () => {
+    const form = new FormData();
+    form.append('audio', audio, 'session.webm');
+    form.append('patient_id', patientId);
+    if (meta) {
+      form.append('session_id', meta.sessionId);
+      form.append('segment_type', meta.segmentType);
+      form.append('participant_ids', meta.participantIds.join(','));
+    }
+    return form;
+  };
+
+  for (let attempt = 1; attempt <= UPLOAD_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+
+    let resp: Response;
+    try {
+      // A fresh FormData per attempt — the Blob is re-readable, the FormData is not.
+      resp = await fetchWithAuth('/api/sessions/process', {
+        method: 'POST',
+        body: buildForm(),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      // Transport-level failure (network drop, "Load failed", or our abort timeout).
+      if (attempt < UPLOAD_MAX_ATTEMPTS) {
+        console.warn(`[session] Upload attempt ${attempt} failed (${err}); retrying…`);
+        await sleep(1000 * attempt); // linear backoff: 1s, 2s
+        continue;
+      }
+      throw new Error('upload_failed');
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // Got an HTTP response — these are deterministic, do NOT retry.
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      if (resp.status === 429) throw new Error('quota_exceeded');
+      throw new Error((err as { detail?: string }).detail ?? `Error ${resp.status}`);
+    }
+
+    const data = (await resp.json()) as { job_id: string };
+    return data.job_id;
   }
 
-  const resp = await fetchWithAuth('/api/sessions/process', {
-    method: 'POST',
-    body: form,
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-    if (resp.status === 429) throw new Error('quota_exceeded');
-    throw new Error((err as { detail?: string }).detail ?? `Error ${resp.status}`);
-  }
-
-  const data = await resp.json() as { job_id: string };
-  return data.job_id;
+  // Unreachable — the loop either returns or throws.
+  throw new Error('upload_failed');
 }
 
 /**

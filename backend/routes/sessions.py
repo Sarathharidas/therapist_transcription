@@ -357,16 +357,33 @@ async def submit_session(
     # can be missing or lie about chunked uploads).
     job_id = str(uuid.uuid4())
     audio_path = os.path.join(tempfile.gettempdir(), f"aura_{job_id}{suffix}")
-    content = await audio.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio file too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
-        )
-    with open(audio_path, "wb") as f:
-        f.write(content)
 
-    size_kb = len(content) // 1024
+    # Stream the upload to disk in fixed-size chunks instead of buffering the
+    # whole file in memory. Keeps memory flat regardless of session length and
+    # starts writing immediately. Enforce the size cap as we go (Content-Length
+    # can be missing or lie on chunked uploads).
+    total = 0
+    try:
+        with open(audio_path, "wb") as f:
+            while True:
+                chunk = await audio.read(1024 * 1024)  # 1 MB
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Audio file too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
+                    )
+                f.write(chunk)
+    except Exception:
+        # Clean up the partial temp file on any failure (size cap, or a client
+        # disconnect mid-upload) so we don't leak files into the temp dir.
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        raise
+
+    size_kb = total // 1024
     print(f"[sessions] Saved {size_kb} KB to {audio_path} (mime={mime_type})")
 
     # Create job record in DB

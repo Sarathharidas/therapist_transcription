@@ -117,4 +117,4 @@ export type JobStatus = {
 };
 
 export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment' | 'team';
-export type SessionPhase = 'ready' | 'recording' | 'submitting';
+export type SessionPhase = 'ready' | 'recording' | 'submitting' | 'failed';

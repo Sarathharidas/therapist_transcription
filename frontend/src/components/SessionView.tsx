@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic } from 'lucide-react';
+import { AlertTriangle, Mic, RefreshCw } from 'lucide-react';
 import { useRecorder } from '../hooks/useRecorder';
 import { submitSession } from '../api/sessions';
 import type { Patient, SessionPhase } from '../types';
@@ -38,11 +38,11 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
     return () => clearInterval(id);
   }, [phase]);
 
-  // Warn before closing/navigating away during a live recording or upload.
-  // Once submitSession resolves the audio is safe on the server — only
-  // recording + submitting phases are at risk of data loss.
+  // Warn before closing/navigating away while the recording exists only in the
+  // browser. Once submitSession resolves the audio is safe on the server — until
+  // then (recording, submitting, or a failed-but-retryable upload) it's at risk.
   useEffect(() => {
-    if (phase !== 'recording' && phase !== 'submitting') return;
+    if (phase !== 'recording' && phase !== 'submitting' && phase !== 'failed') return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
@@ -66,13 +66,29 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
       setError(
         msg === 'quota_exceeded'
           ? 'Gemini API quota exceeded. Please enable billing or wait for daily reset.'
+          : msg === 'upload_failed'
+          ? 'Upload failed — but your recording is safe. Check your connection and tap Retry.'
           : msg,
       );
-      setPhase('ready');
-      reset();
-      setElapsed(0);
+      // Keep the recorded blob so the clinician can retry instead of losing it.
+      setPhase('failed');
     }
-  }, [patient.id, reset, onProcessingStarted]);
+  }, [patient.id, onProcessingStarted]);
+
+  // Retry the upload with the same recording (blob is still held by useRecorder).
+  const handleRetry = useCallback(() => {
+    if (!blob) return;
+    setPhase('submitting');
+    runSubmit(blob);
+  }, [blob, runSubmit]);
+
+  // Give up on this recording and start over.
+  const handleDiscard = useCallback(() => {
+    reset();
+    setPhase('ready');
+    setElapsed(0);
+    setError(null);
+  }, [reset]);
 
   // When recorder stops → submit audio for background processing
   useEffect(() => {
@@ -164,9 +180,44 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
       {/* Content */}
       {phase === 'submitting' ? (
         <SubmittingView patientName={patient.name} />
+      ) : phase === 'failed' ? (
+        <FailedView patientName={patient.name} onRetry={handleRetry} onDiscard={handleDiscard} />
       ) : (
         <RecordingIdleView phase={phase} patientName={patient.name} onStart={handleStart} onStop={handleStop} />
       )}
+    </div>
+  );
+}
+
+function FailedView({
+  patientName, onRetry, onDiscard,
+}: { patientName: string; onRetry: () => void; onDiscard: () => void }) {
+  return (
+    <div className="flex-1 flex items-center justify-center px-6 sm:px-8">
+      <div className="text-center max-w-sm">
+        <div className="mx-auto size-16 rounded-full bg-amber-500/10 flex items-center justify-center mb-6">
+          <AlertTriangle className="size-8 text-amber-500" />
+        </div>
+        <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>Upload didn't go through</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          {patientName}'s recording is still here — it wasn't lost. See the message above, then try again.
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+          >
+            <RefreshCw className="size-4" />
+            Retry upload
+          </button>
+          <button
+            onClick={onDiscard}
+            className="px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Discard
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

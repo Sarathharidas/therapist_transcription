@@ -16,7 +16,14 @@ export function useRecorder() {
         MediaRecorder.isTypeSupported(m),
       ) ?? '';
 
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    // Speech needs very little bitrate. Capping at 32 kbps keeps quality fine
+    // for transcription while shrinking the upload ~4-8x vs. the browser default
+    // — long sessions upload far faster and are less likely to hit a timeout or
+    // a mid-upload network drop. See the upload-reliability work in CLAUDE.md.
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 32000,
+    });
     chunksRef.current = [];
 
     recorder.ondataavailable = (e) => {

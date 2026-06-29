@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Lock, Mic, Users, Loader2, AlertCircle, ArrowRight } from 'lucide-react';
+import { Check, Lock, Mic, Users, Loader2, AlertCircle, AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react';
 import { useRecorder } from '../hooks/useRecorder';
 import { submitSession, pollJobStatus } from '../api/sessions';
 import type { Appointment, GroupMember, JobStatus, SegmentType, SessionPhase } from '../types';
@@ -55,9 +55,10 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
     return () => clearInterval(id);
   }, [phase]);
 
-  // Warn before leaving during a live recording or upload.
+  // Warn before leaving while the segment exists only in the browser (recording,
+  // submitting, or a failed-but-retryable upload).
   useEffect(() => {
-    if (phase !== 'recording' && phase !== 'submitting') return;
+    if (phase !== 'recording' && phase !== 'submitting' && phase !== 'failed') return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
@@ -120,13 +121,31 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
       setError(
         msg === 'quota_exceeded'
           ? 'Gemini API quota exceeded. Please enable billing or wait for daily reset.'
+          : msg === 'upload_failed'
+          ? 'Upload failed — but this segment is safe. Check your connection and tap Retry.'
           : msg,
       );
-      setPhase('ready');
-      reset();
-      setElapsed(0);
+      // Keep the recorded blob (and the current config) so the segment can be
+      // retried instead of lost. The config chips are disabled while busy, so
+      // `config` still holds the segment that was recorded.
+      setPhase('failed');
     }
   }, [appointment, reset]);
+
+  // Retry the failed segment upload with the same recording + config.
+  const handleRetry = useCallback(() => {
+    if (!blob) return;
+    setPhase('submitting');
+    runSubmit(blob, config);
+  }, [blob, config, runSubmit]);
+
+  // Discard the failed segment and return to ready (keeps already-saved segments).
+  const handleDiscard = useCallback(() => {
+    reset();
+    setPhase('ready');
+    setElapsed(0);
+    setError(null);
+  }, [reset]);
 
   // When recorder stops → submit the segment for background processing
   useEffect(() => {
@@ -232,25 +251,51 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
             <button
               type="button"
               onClick={phase === 'ready' ? handleStart : phase === 'recording' ? handleStop : undefined}
-              disabled={phase === 'submitting'}
+              disabled={phase === 'submitting' || phase === 'failed'}
               className={`group relative mx-auto size-20 sm:size-24 rounded-full flex items-center justify-center mb-5 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 ${
-                phase === 'recording' ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-accent/10 hover:bg-accent/20'
+                phase === 'recording' ? 'bg-red-500/10 hover:bg-red-500/20'
+                  : phase === 'failed' ? 'bg-amber-500/10'
+                  : 'bg-accent/10 hover:bg-accent/20'
               }`}
             >
               {phase === 'recording' && <span className="absolute inset-0 rounded-full bg-red-500/20 animate-ping" />}
               {phase === 'submitting'
                 ? <Loader2 className="size-8 animate-spin text-accent relative" />
+                : phase === 'failed'
+                ? <AlertTriangle className="size-8 sm:size-10 relative text-amber-500" />
                 : <Mic className={`size-8 sm:size-10 relative ${phase === 'recording' ? 'text-red-500' : 'text-accent'}`} />}
             </button>
             <h3 className="text-xl sm:text-2xl mb-1" style={{ fontFamily: 'var(--font-serif)' }}>
-              {phase === 'recording' ? 'Listening…' : phase === 'submitting' ? 'Saving segment…' : 'Ready when you are'}
+              {phase === 'recording' ? 'Listening…'
+                : phase === 'submitting' ? 'Saving segment…'
+                : phase === 'failed' ? "Upload didn't go through"
+                : 'Ready when you are'}
             </h3>
             <p className="text-sm text-muted-foreground px-6">
               {phase === 'recording'
                 ? `Recording the ${config.kind === 'joint' ? 'joint' : config.participant.name + ' 1:1'} segment privately.`
+                : phase === 'failed'
+                ? 'This segment is still here — it wasn’t lost. See the message above, then try again.'
                 : `Next segment: ${configLabel(config)}. Tap to start.`}
             </p>
-            {config.kind === 'individual' && phase !== 'submitting' && (
+            {phase === 'failed' && (
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <button
+                  onClick={handleRetry}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                >
+                  <RefreshCw className="size-4" />
+                  Retry upload
+                </button>
+                <button
+                  onClick={handleDiscard}
+                  className="px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Discard
+                </button>
+              </div>
+            )}
+            {config.kind === 'individual' && phase !== 'submitting' && phase !== 'failed' && (
               <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
                 <Lock className="size-3" /> Private to {config.participant.name} — not shared with the others
               </p>
