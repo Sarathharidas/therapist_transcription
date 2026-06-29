@@ -8,6 +8,7 @@ update status between each phase.
 
 import glob
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -40,6 +41,9 @@ Language rules:
 - Transcribe everything in English only.
 - English speech → transcribe verbatim
 - Malayalam speech → translate to natural English
+- NEVER output Malayalam script or romanised Malayalam words. Always render the
+  meaning in natural English, even if you are unsure — translate, do not transliterate.
+  (Proper nouns such as names and places may stay as-is.)
 
 Format every turn on its own line:
 Therapist: <text>
@@ -352,6 +356,9 @@ Language rules:
 - Transcribe everything in English only.
 - English speech → transcribe verbatim
 - Malayalam speech → translate to natural English
+- NEVER output Malayalam script or romanised Malayalam words. Always render the
+  meaning in natural English, even if you are unsure — translate, do not transliterate.
+  (Proper nouns such as names and places may stay as-is.)
 
 Speaker labelling rules:
 - Label speakers by voice only — do NOT try to guess roles (therapist vs patient).
@@ -376,6 +383,14 @@ You are given transcript segments from a single therapy session.
 Each segment was transcribed independently using neutral voice-based labels
 (Speaker 1, Speaker 2, etc.) that may be inconsistent across segments.
 
+LANGUAGE — mandatory, overrides everything else:
+- The final unified transcript MUST be entirely in natural English.
+- Some segments may still contain Malayalam (in Malayalam script or romanised) or
+  other non-English text that slipped through. Translate ALL of it into natural
+  English as you rewrite — translate the meaning, do not transliterate.
+- Never output Malayalam script. Never leave any turn partly in Malayalam.
+- Proper nouns (names, places) may stay as-is.
+
 Your task — follow these steps in order:
 
 STEP 1 — Determine the full speaker roster across ALL segments before assigning any labels.
@@ -392,7 +407,9 @@ STEP 3 — Number the patients by order of FIRST APPEARANCE across the entire se
   - If only one patient exists, label them "Patient:" (no number).
   - If two or more patients exist, label them "Patient 1:", "Patient 2:", etc.
 
-STEP 4 — Rewrite the full unified transcript with consistent labels throughout.
+STEP 4 — Rewrite the full unified transcript with consistent labels throughout,
+  ensuring every line is in natural English (translate any remaining Malayalam or
+  other non-English text — never leave Malayalam script in the output).
 
 Output format (one turn per line):
 Therapist: <text>
@@ -405,6 +422,26 @@ Output ONLY the unified transcript — no preamble, no step explanations, no com
 
 SEGMENTS:
 {segments}
+"""
+
+
+# Matches any character in the Malayalam Unicode block (U+0D00–U+0D7F).
+_MALAYALAM_RE = re.compile(r"[ഀ-ൿ]")
+
+# Safety-net pass: re-translate a transcript that still contains Malayalam,
+# preserving speaker labels and turn-by-turn layout. {transcript} is injected
+# with .replace() so braces in the text don't break anything.
+TRANSLATE_TO_ENGLISH_PROMPT = """The therapy session transcript below still contains some Malayalam (in Malayalam script or romanised). Rewrite it so it is ENTIRELY in natural English.
+
+Rules:
+- Translate every Malayalam word and phrase into natural English — translate the meaning, do not transliterate.
+- Keep the speaker labels exactly as they are (Therapist:, Patient:, Patient 1:, etc.) and keep every turn on its own line.
+- Do NOT add, remove, merge, reorder, or summarise turns — only translate.
+- Keep proper nouns (names, places) as-is.
+- Output ONLY the rewritten transcript — no preamble, no commentary.
+
+TRANSCRIPT:
+<<<TRANSCRIPT>>>
 """
 
 
@@ -598,9 +635,51 @@ class GeminiService:
             print(f"[gemini] Normalization failed ({exc}), using raw stitched transcript")
             return "\n".join(chunk_transcripts)
 
+    # ── English-only safety net ───────────────────────────────────────────
+
+    def _has_malayalam(self, text: str) -> bool:
+        """True if any Malayalam-script character is present."""
+        return bool(text) and _MALAYALAM_RE.search(text) is not None
+
+    def _ensure_english(self, transcript: str) -> str:
+        """
+        The transcription/normalization prompts ask for English only, but the model
+        occasionally leaves Malayalam script in. As a guarantee, scan the final
+        transcript and, only if Malayalam is found, run one targeted translation
+        pass that preserves speaker labels and layout. No-op (and no API call) when
+        the transcript is already clean.
+        """
+        if not self._has_malayalam(transcript):
+            return transcript
+        print("[gemini] Malayalam detected in transcript — running English translation pass")
+        try:
+            translated = self._generate(
+                TRANSLATE_TO_ENGLISH_PROMPT.replace("<<<TRANSCRIPT>>>", transcript)
+            )
+            if not translated:
+                return transcript
+            if self._has_malayalam(translated):
+                print("[gemini] Translation pass still contained Malayalam — keeping best effort")
+            return translated
+        except Exception as exc:
+            print(f"[gemini] Translation pass failed ({exc}); returning original transcript")
+            return transcript
+
     def transcribe_fast(self, audio_path: str, mime_type: str = "audio/webm",
                         chunk_seconds: int = 300, max_workers: int = 6,
                         names_hint: Optional[List[str]] = None) -> str:
+        """
+        Transcribe audio (chunking long files), then guarantee English-only output
+        via _ensure_english(). See _transcribe_fast_raw() for the transcription flow.
+        """
+        transcript = self._transcribe_fast_raw(
+            audio_path, mime_type, chunk_seconds, max_workers, names_hint
+        )
+        return self._ensure_english(transcript)
+
+    def _transcribe_fast_raw(self, audio_path: str, mime_type: str = "audio/webm",
+                             chunk_seconds: int = 300, max_workers: int = 6,
+                             names_hint: Optional[List[str]] = None) -> str:
         """
         Transcribe audio, automatically chunking long files for parallel processing.
 
