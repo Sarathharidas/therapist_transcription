@@ -116,5 +116,5 @@ export type JobStatus = {
   error: string | null;
 };
 
-export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment' | 'team';
+export type AppView = 'select' | 'session' | 'past-session' | 'group-session' | 'appointment' | 'team' | 'how-it-works';
 export type SessionPhase = 'ready' | 'recording' | 'submitting' | 'failed';

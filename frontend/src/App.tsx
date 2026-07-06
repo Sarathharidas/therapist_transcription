@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import { FileText, LogOut, Menu, UserPlus, X } from 'lucide-react';
+import { FileText, LogOut, Menu, ShieldCheck, UserPlus, X } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { PatientSelect } from './components/PatientSelect';
 import { SessionView } from './components/SessionView';
@@ -14,6 +14,7 @@ import { GroupSessionView } from './components/GroupSessionView';
 import { AppointmentView } from './components/AppointmentView';
 import { TeamView } from './components/TeamView';
 import { SummaryFormatDialog } from './components/SummaryFormatDialog';
+import { HowItWorks } from './components/HowItWorks';
 import { Building2 } from 'lucide-react';
 import type {
   Appointment,
@@ -81,6 +82,12 @@ function AppInner() {
 
   const handleOpenTeam = () => {
     setView('team');
+    setActiveSummaryId(undefined);
+    setSidebarOpen(false);
+  };
+
+  const handleOpenHowItWorks = () => {
+    setView('how-it-works');
     setActiveSummaryId(undefined);
     setSidebarOpen(false);
   };
@@ -247,6 +254,8 @@ function AppInner() {
             >
               {view === 'select'
                 ? 'New Session'
+                : view === 'how-it-works'
+                ? 'How it works'
                 : view === 'team'
                 ? `Clinic / ${clinician.clinicName ?? ''}`
                 : view === 'group-session'
@@ -265,6 +274,18 @@ function AppInner() {
             >
               {clinician.name}
             </span>
+
+            {/* How it works / privacy — home screen */}
+            {view === 'select' && (
+              <button
+                onClick={handleOpenHowItWorks}
+                title="How it works & your privacy"
+                className="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+              >
+                <ShieldCheck className="size-3.5" />
+                <span className="hidden sm:inline">How it works</span>
+              </button>
+            )}
 
             {/* Summary format editor — sits just left of Add on the home screen */}
             {view === 'select' && (
@@ -349,6 +370,9 @@ function AppInner() {
         )}
         {view === 'team' && (
           <TeamView clinician={clinician} />
+        )}
+        {view === 'how-it-works' && (
+          <HowItWorks onBack={handleNewSession} />
         )}
         {view === 'appointment' && (
           appointmentLoading ? (
