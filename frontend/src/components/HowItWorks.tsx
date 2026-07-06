@@ -2,6 +2,8 @@ import { ArrowLeft, FileText, Lock, MicOff, Mic, ShieldCheck, Trash2, UserCheck,
 
 type Props = {
   onBack: () => void;
+  // Label for the closing button — differs pre-login vs. in-app.
+  backLabel?: string;
 };
 
 /**
@@ -11,7 +13,7 @@ type Props = {
  * transcripts/summaries/notes encrypted at rest; TLS in transit; per-therapist
  * data isolation).
  */
-export function HowItWorks({ onBack }: Props) {
+export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
   return (
     <div className="flex-1 overflow-y-auto bg-background">
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-14">
@@ -65,7 +67,8 @@ export function HowItWorks({ onBack }: Props) {
             { icon: Mic, title: 'You speak', body: 'Audio is captured live in your browser — only while you’re recording, and only to be turned into text.' },
             { icon: FileText, title: 'It becomes text', body: 'Your session is transcribed and distilled into clear clinical notes.' },
             { icon: Trash2, title: 'The audio is destroyed', body: 'The instant the transcript exists, the recording is permanently deleted. This step is not optional and cannot be turned off.' },
-            { icon: Lock, title: 'Your notes are locked away', body: 'The transcript, summary, and your private notes are encrypted and stored for your eyes only.' },
+            { icon: Lock, title: 'It’s encrypted', body: 'The transcript, summary, and your private notes are encrypted the moment they’re saved — scrambled into unreadable ciphertext that only your account can unlock.' },
+            { icon: ShieldCheck, title: 'Saved for your eyes only', body: 'Your encrypted notes are stored in your private account, ready whenever you need them — and visible to no one else.' },
           ].map((step, i) => (
             <li key={i} className="flex items-start gap-4 p-4 sm:p-5 bg-card border border-border rounded-xl">
               <div className="flex items-center gap-3 shrink-0">
@@ -139,7 +142,7 @@ export function HowItWorks({ onBack }: Props) {
             onClick={onBack}
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent text-accent-foreground text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
           >
-            Back to sessions
+            {backLabel}
           </button>
         </div>
 

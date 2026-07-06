@@ -42,6 +42,8 @@ function AppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Summary-format editor dialog (home screen)
   const [formatOpen, setFormatOpen] = useState(false);
+  // "How it works" page shown pre-login (post-login it's a normal view)
+  const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 
   // Sidebar refresh + active highlight
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
@@ -193,9 +195,16 @@ function AppInner() {
     );
   }
 
-  // Not authenticated — show login
+  // Not authenticated — show the privacy page (if opened) or the login screen
   if (!clinician) {
-    return <LoginPage onLogin={setClinician} />;
+    if (howItWorksOpen) {
+      return (
+        <div className="h-dvh flex flex-col bg-background">
+          <HowItWorks onBack={() => setHowItWorksOpen(false)} backLabel="Back to sign in" />
+        </div>
+      );
+    }
+    return <LoginPage onLogin={setClinician} onHowItWorks={() => setHowItWorksOpen(true)} />;
   }
 
   // Shared sidebar props

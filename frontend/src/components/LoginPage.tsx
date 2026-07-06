@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
-import { Building2, User } from 'lucide-react';
+import { Building2, ShieldCheck, User } from 'lucide-react';
 import { googleLogin, type LoginMode } from '../api/auth';
 import { token } from '../api/base';
 import { ClinicRegister } from './ClinicRegister';
@@ -8,6 +8,8 @@ import type { Clinician } from '../types';
 
 type Props = {
   onLogin: (clinician: Clinician) => void;
+  // Open the "How it works" / privacy page (available before sign-in).
+  onHowItWorks: () => void;
 };
 
 type ClinicScreen = 'choose' | 'register' | 'login';
@@ -22,7 +24,7 @@ function emailFromCredential(cred: string): string {
   }
 }
 
-export function LoginPage({ onLogin }: Props) {
+export function LoginPage({ onLogin, onHowItWorks }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<LoginMode>('individual');
@@ -215,6 +217,14 @@ export function LoginPage({ onLogin }: Props) {
             ? 'Clinic access is invite-only — ask your admin if you need access.'
             : 'Your data is private and scoped to your account.'}
         </p>
+
+        {/* Privacy / how-it-works — available before signing in */}
+        <button
+          onClick={onHowItWorks}
+          className="mx-auto mt-4 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ShieldCheck className="size-3.5" /> How it works &amp; your privacy
+        </button>
       </div>
     </div>
   );
