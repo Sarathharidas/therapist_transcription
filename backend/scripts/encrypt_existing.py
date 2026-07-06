@@ -12,13 +12,20 @@ happens. Run once after deploying the key:
     PYTHONPATH=. python backend/scripts/encrypt_existing.py
 """
 
+import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+# Make the `backend` package importable no matter how this script is invoked
+# (e.g. `python backend/scripts/encrypt_existing.py` without PYTHONPATH set).
+_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_ROOT))
+
+from dotenv import load_dotenv  # noqa: E402
 
 # Load the same .env the app uses (ENCRYPTION_KEY, DATABASE_URL) before importing
-# anything that reads them.
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
+# anything that reads them. (Harmless if there's no .env — e.g. under `railway run`,
+# where the vars are already injected into the environment.)
+load_dotenv(dotenv_path=_ROOT / ".env")
 
 from backend.db import Summary  # noqa: E402
 from backend.db.session import SessionLocal  # noqa: E402
