@@ -22,7 +22,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / ".env")
 
 from backend.db import Summary  # noqa: E402
 from backend.db.session import SessionLocal  # noqa: E402
-from backend.services.crypto import PREFIX, encrypt, is_enabled  # noqa: E402
+from backend.services.crypto import encrypt, is_enabled, is_encrypted  # noqa: E402
 
 FIELDS = ("transcription", "ai_summary", "clinician_notes")
 BATCH = 200
@@ -45,7 +45,7 @@ def main() -> None:
             for field in FIELDS:
                 value = getattr(row, field)
                 # Skip NULLs and anything already encrypted.
-                if value is None or value.startswith(PREFIX):
+                if value is None or is_encrypted(value):
                     continue
                 setattr(row, field, encrypt(value))
                 changed_fields += 1

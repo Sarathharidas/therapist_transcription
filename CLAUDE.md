@@ -83,7 +83,7 @@ Therapist Transcripts/
 │   ├── scripts/
 │   │   └── encrypt_existing.py   # one-time backfill: encrypt existing plaintext rows
 │   └── services/
-│       ├── crypto.py             # at-rest PHI encryption (Fernet); encrypt()/decrypt()
+│       ├── crypto.py             # at-rest PHI encryption (Fernet enc:1 / AWS KMS enc:2)
 │       └── gemini.py             # GeminiService — upload, transcribe, summarise
 │
 └── frontend/
@@ -148,19 +148,29 @@ The clinician row is seeded from `CLINICIAN_EMAIL` / `CLINICIAN_NAME` in `.env`.
 ### PHI encryption at rest
 
 `summaries.transcription`, `summaries.ai_summary`, and `summaries.clinician_notes`
-are encrypted at rest when `ENCRYPTION_KEY` is set (`services/crypto.py`, Fernet).
-- **Transparent to the frontend** — the backend `encrypt()`s on write (`job_runner.py`,
-  notes save) and `decrypt()`s on read (the 3 read sites in `routes/sessions.py`); the
-  API still returns/accepts plaintext, so no client change.
-- **Opt-in + mixed-safe** — no key = values stored as plaintext (local dev / tests
-  unaffected). A `enc:1:` marker tags ciphertext so `decrypt()` handles a mix of legacy
-  plaintext and encrypted rows. Columns stay `TEXT` (ciphertext is base64) — no migration.
-- **Backfill** existing rows once after setting the key:
-  `PYTHONPATH=. python backend/scripts/encrypt_existing.py` (idempotent).
-- **Threat model:** protects a DB-only compromise (stolen snapshot/backup/read access),
-  NOT a compromised app server (it holds the key). Losing `ENCRYPTION_KEY` = unrecoverable
-  data — back it up (e.g. AWS Secrets Manager). Rotate via comma-separated keys (MultiFernet)
-  → re-run the backfill → drop the old key.
+are encrypted at rest (`services/crypto.py`). Two backends, chosen for NEW writes by
+which env var is set (decryption dispatches per row on a self-describing marker):
+- **`KMS_KEY_ID` → AWS KMS envelope encryption (`enc:2`)** — preferred/hardened. KMS
+  mints a per-row data key; the text is AES-256-GCM'd locally and the KMS-sealed data
+  key is stored beside the ciphertext. No exportable raw key in the env, every decrypt
+  logged in CloudTrail, IAM-revocable. Decrypted data keys are cached briefly to bound
+  KMS calls. Needs `boto3` + AWS creds (IAM role).
+- **`ENCRYPTION_KEY` → Fernet (`enc:1`)** — simple/portable app key.
+- **neither set → plaintext** (opt-in; local dev / tests unaffected).
+
+Other properties:
+- **Transparent to the frontend** — `encrypt()` on write (`job_runner.py`, notes save),
+  `decrypt()` on read (the 3 sites in `routes/sessions.py`); the API still speaks plaintext.
+- **Mixed-safe** — the `enc:1:` / `enc:2:` markers let one column hold legacy plaintext +
+  both formats; migration is gradual. Columns stay `TEXT` (base64) — no schema migration.
+- **Backfill** existing rows once after enabling a backend:
+  `PYTHONPATH=. python backend/scripts/encrypt_existing.py` (idempotent; encrypts using
+  whichever backend is active).
+- **Threat model:** both protect a DB-only compromise (stolen snapshot/backup/read access),
+  NOT a compromised app server. KMS adds: no stealable key + audit trail + instant IAM
+  revoke (but the app's role can still request decrypts — full lockout needs BYOC/E2EE).
+  Losing the key/CMK = unrecoverable data. Rotate Fernet via comma-separated keys
+  (MultiFernet) → re-run backfill → drop old key; KMS rotates the CMK automatically.
 
 ### Group / couple therapy tables
 
@@ -295,9 +305,14 @@ CLINICIAN_NAME=          # e.g. Dr. Abid — seeded to DB on startup
 FRONTEND_ORIGIN=         # Vercel URL e.g. https://your-app.vercel.app (CORS)
 
 # PHI encryption at rest (OPTIONAL — unset = transcripts stored as plaintext)
-ENCRYPTION_KEY=          # Fernet key(s). Encrypts summary/transcript/notes at rest.
+# Two backends; pick ONE for new writes (decryption auto-detects per row).
+ENCRYPTION_KEY=          # Fernet key(s) → enc:1 rows. Simple / portable.
                          # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
                          # Comma-separate multiple keys for rotation (first encrypts, all decrypt).
+KMS_KEY_ID=              # AWS KMS key ARN/id/alias → enc:2 rows (envelope encryption).
+                         # Preferred when set: no raw key in env, every decrypt logged in
+                         # CloudTrail, IAM-revocable. Auth via the standard AWS credential
+                         # chain (IAM role); also honours AWS_REGION. Needs boto3.
 
 # Clinic / enterprise (OPTIONAL — unset = plain single-therapist deployment)
 CLINIC_NAME=             # e.g. "Bright Minds" — creates the clinic on startup
