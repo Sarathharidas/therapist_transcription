@@ -14,6 +14,7 @@ import uuid
 
 from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant
 from backend.db.session import SessionLocal
+from backend.services.crypto import encrypt
 from backend.services.gemini import get_service
 
 
@@ -87,13 +88,13 @@ def run_job(job_id: str) -> None:
         summary_fmt = clinician.summary_format if clinician else None
         summary_text = service.summarize(transcript, fmt=summary_fmt)
 
-        # ── Save result to summaries table ───────────────────────────────
+        # ── Save result to summaries table (PHI encrypted at rest) ────────
         summary_row = Summary(
             patient_id=job.patient_id,
             session_id=job.session_id,
             segment_type=job.segment_type or "solo",
-            ai_summary=summary_text,
-            transcription=transcript,
+            ai_summary=encrypt(summary_text),
+            transcription=encrypt(transcript),
         )
         db.add(summary_row)
         db.flush()  # gets summary_id without a full commit yet

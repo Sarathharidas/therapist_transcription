@@ -33,6 +33,7 @@ from backend.db import (
 )
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
+from backend.services.crypto import decrypt, encrypt
 from backend.services.job_runner import run_job
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -481,7 +482,7 @@ def list_recent_sessions(
     )
     result = []
     for summary, patient, appt in rows:
-        snippet = _summary_snippet(summary.ai_summary or "")
+        snippet = _summary_snippet(decrypt(summary.ai_summary) or "")
         result.append(RecentSessionOut(
             summary_id=str(summary.summary_id),
             patient_name=patient.name,
@@ -535,9 +536,9 @@ def get_appointment(
             summary_id=str(s.summary_id),
             segment_type=s.segment_type or "solo",
             participants=[_participant_out(p) for p in people],
-            transcript=s.transcription or "",
-            summary=s.ai_summary or "",
-            clinician_notes=s.clinician_notes,
+            transcript=decrypt(s.transcription) or "",
+            summary=decrypt(s.ai_summary) or "",
+            clinician_notes=decrypt(s.clinician_notes),
             date=_format_date(s.created_at),
         ))
 
@@ -574,9 +575,9 @@ def get_session(
         summary_id=str(summary.summary_id),
         patient_id=str(summary.patient_id),
         patient_name=patient.name,
-        transcript=summary.transcription or "",
-        summary=summary.ai_summary or "",
-        clinician_notes=summary.clinician_notes,
+        transcript=decrypt(summary.transcription) or "",
+        summary=decrypt(summary.ai_summary) or "",
+        clinician_notes=decrypt(summary.clinician_notes),
         date=_format_date(summary.created_at),
     )
 
@@ -601,7 +602,7 @@ def save_notes(
     if not summary_row:
         raise HTTPException(status_code=404, detail="Summary not found")
 
-    summary_row.clinician_notes = body.notes
+    summary_row.clinician_notes = encrypt(body.notes)
     db.commit()
     print(f"[notes] Saved {len(body.notes)} chars to summary {summary_id}")
     return {"ok": True}

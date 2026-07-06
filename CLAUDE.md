@@ -80,7 +80,10 @@ Therapist Transcripts/
 │   │   ├── clinic.py             # clinic members + invites (enterprise)
 │   │   ├── sessions.py           # appointment + segmented /process + appointment detail
 │   │   └── settings.py           # per-therapist summary-format (GET/PUT)
+│   ├── scripts/
+│   │   └── encrypt_existing.py   # one-time backfill: encrypt existing plaintext rows
 │   └── services/
+│       ├── crypto.py             # at-rest PHI encryption (Fernet); encrypt()/decrypt()
 │       └── gemini.py             # GeminiService — upload, transcribe, summarise
 │
 └── frontend/
@@ -141,6 +144,23 @@ summaries (
 
 Tables are created automatically on startup via `Base.metadata.create_all()`.
 The clinician row is seeded from `CLINICIAN_EMAIL` / `CLINICIAN_NAME` in `.env`.
+
+### PHI encryption at rest
+
+`summaries.transcription`, `summaries.ai_summary`, and `summaries.clinician_notes`
+are encrypted at rest when `ENCRYPTION_KEY` is set (`services/crypto.py`, Fernet).
+- **Transparent to the frontend** — the backend `encrypt()`s on write (`job_runner.py`,
+  notes save) and `decrypt()`s on read (the 3 read sites in `routes/sessions.py`); the
+  API still returns/accepts plaintext, so no client change.
+- **Opt-in + mixed-safe** — no key = values stored as plaintext (local dev / tests
+  unaffected). A `enc:1:` marker tags ciphertext so `decrypt()` handles a mix of legacy
+  plaintext and encrypted rows. Columns stay `TEXT` (ciphertext is base64) — no migration.
+- **Backfill** existing rows once after setting the key:
+  `PYTHONPATH=. python backend/scripts/encrypt_existing.py` (idempotent).
+- **Threat model:** protects a DB-only compromise (stolen snapshot/backup/read access),
+  NOT a compromised app server (it holds the key). Losing `ENCRYPTION_KEY` = unrecoverable
+  data — back it up (e.g. AWS Secrets Manager). Rotate via comma-separated keys (MultiFernet)
+  → re-run the backfill → drop the old key.
 
 ### Group / couple therapy tables
 
@@ -273,6 +293,11 @@ DATABASE_URL=            # PostgreSQL connection string — required
 CLINICIAN_EMAIL=         # e.g. doctor@clinic.com — seeded to DB on startup
 CLINICIAN_NAME=          # e.g. Dr. Abid — seeded to DB on startup
 FRONTEND_ORIGIN=         # Vercel URL e.g. https://your-app.vercel.app (CORS)
+
+# PHI encryption at rest (OPTIONAL — unset = transcripts stored as plaintext)
+ENCRYPTION_KEY=          # Fernet key(s). Encrypts summary/transcript/notes at rest.
+                         # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+                         # Comma-separate multiple keys for rotation (first encrypts, all decrypt).
 
 # Clinic / enterprise (OPTIONAL — unset = plain single-therapist deployment)
 CLINIC_NAME=             # e.g. "Bright Minds" — creates the clinic on startup
