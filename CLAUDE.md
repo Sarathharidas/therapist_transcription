@@ -299,7 +299,11 @@ GEMINI_API_KEY=          # Google AI Studio key — required
 DATABASE_URL=            # PostgreSQL connection string — required
 CLINICIAN_EMAIL=         # e.g. doctor@clinic.com — seeded to DB on startup
 CLINICIAN_NAME=          # e.g. Dr. Abid — seeded to DB on startup
-FRONTEND_ORIGIN=         # Vercel URL e.g. https://your-app.vercel.app (CORS)
+FRONTEND_ORIGIN=         # Vercel URL(s) for CORS, e.g. https://your-app.vercel.app
+                         # NO trailing slash (browsers send Origin without one).
+                         # Comma-separate multiple (custom domain + vercel.app).
+FRONTEND_ORIGIN_REGEX=   # OPTIONAL — allow preview deploys by regex, e.g.
+                         # https://your-app[a-z0-9-]*\.vercel\.app
 
 # PHI encryption at rest (OPTIONAL — unset = transcripts stored as plaintext)
 ENCRYPTION_KEY=          # Fernet key(s). Encrypts summary/transcript/notes at rest.

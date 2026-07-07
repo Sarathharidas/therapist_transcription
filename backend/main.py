@@ -39,18 +39,35 @@ if _missing:
     )
 
 # ── CORS ───────────────────────────────────────────────────────────────────
+# FRONTEND_ORIGIN may be a comma-separated list (e.g. a custom domain + the
+# vercel.app URL). We normalise each entry — trim whitespace and strip a trailing
+# slash — because a trailing slash is a common cause of "Disallowed CORS origin":
+# browsers send the Origin header with NO trailing slash, so it must match exactly.
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "")
+_configured_origins = [o.strip().rstrip("/") for o in FRONTEND_ORIGIN.split(",") if o.strip()]
+
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    *_configured_origins,
+]
+
+# Optionally allow additional origins by regex — e.g. Vercel preview deploys.
+# Set FRONTEND_ORIGIN_REGEX, scoped to your project, e.g.:
+#   https://therapist-transcription[a-z0-9-]*\.vercel\.app
+_origin_regex = (os.getenv("FRONTEND_ORIGIN_REGEX") or "").strip() or None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        *([FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []),
-    ],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+print(
+    f"[startup] CORS allowed origins: {ALLOWED_ORIGINS}"
+    + (f" + regex {_origin_regex}" if _origin_regex else "")
 )
 
 
