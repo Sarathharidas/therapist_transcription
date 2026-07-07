@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aura · Gemini Cost Calculator</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1d24; --border:#2a2e37; --fg:#e7e9ee; --mut:#9aa1ad; --acc:#7c9cff; --good:#4ade80; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:920px; margin:0 auto; padding:32px 20px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 28px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:720px){ .grid { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); margin:0 0 16px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:14px 0 6px; }
+  label:first-of-type { margin-top:0; }
+  input, select { width:100%; background:var(--bg); border:1px solid var(--border); color:var(--fg); border-radius:8px; padding:9px 11px; font-size:14px; }
+  input:focus, select:focus { outline:none; border-color:var(--acc); }
+  .row { display:flex; gap:12px; }
+  .row > div { flex:1; }
+  .out { margin-top:24px; }
+  .big { display:flex; gap:12px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:150px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:18px; }
+  .stat .k { font-size:12px; color:var(--mut); text-transform:uppercase; letter-spacing:.06em; }
+  .stat .v { font-size:26px; font-weight:600; margin-top:6px; }
+  .stat .v.acc { color:var(--acc); }
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-size:13px; }
+  td { padding:6px 0; border-bottom:1px solid var(--border); }
+  td:last-child { text-align:right; color:var(--mut); font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:none; font-weight:600; color:var(--fg); }
+  details { margin-top:20px; }
+  summary { cursor:pointer; color:var(--mut); font-size:13px; }
+  .note { color:var(--mut); font-size:12px; margin-top:20px; line-height:1.6; }
+  .note b { color:var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Gemini Cost Calculator</h1>
+  <p class="sub">Estimate transcription + summary cost per session, per therapist, and total. Prices from Google's Gemini API (paid tier).</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Your usage</h2>
+      <label>Average session length (minutes)</label>
+      <input id="minutes" type="number" value="50" min="1" />
+      <label>Sessions per week (per therapist)</label>
+      <input id="perWeek" type="number" value="20" min="0" />
+      <label>Number of therapists</label>
+      <input id="therapists" type="number" value="1" min="1" />
+
+      <label>Model</label>
+      <select id="model">
+        <option value="flash">Gemini 2.5 Flash (current)</option>
+        <option value="flashlite">Gemini 2.5 Flash-Lite (cheaper, lower quality)</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:16px;">
+        <input id="batch" type="checkbox" style="width:auto;" />
+        <span style="color:var(--fg);font-size:14px;">Batch mode (−50%, adds latency)</span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Cost per session</h2>
+      <table id="breakdown"></table>
+      <div class="note" id="tokNote"></div>
+    </div>
+  </div>
+
+  <div class="out">
+    <div class="big">
+      <div class="stat"><div class="k">Per session</div><div class="v acc" id="perSession">–</div></div>
+      <div class="stat"><div class="k">Per therapist / month</div><div class="v" id="perTherapist">–</div></div>
+      <div class="stat"><div class="k">Total / month</div><div class="v" id="perMonth">–</div></div>
+      <div class="stat"><div class="k">Total / year</div><div class="v" id="perYear">–</div></div>
+    </div>
+  </div>
+
+  <details>
+    <summary>Advanced assumptions (edit to taste)</summary>
+    <div class="card" style="margin-top:12px;">
+      <div class="row">
+        <div><label>Audio tokens / second</label><input id="audioTps" type="number" value="32" /></div>
+        <div><label>Transcript tokens / minute (output)</label><input id="txPerMin" type="number" value="170" /></div>
+      </div>
+      <div class="row">
+        <div><label>Summary prompt tokens (format + instructions)</label><input id="fmtTok" type="number" value="2500" /></div>
+        <div><label>Summary output tokens</label><input id="sumOut" type="number" value="3000" /></div>
+      </div>
+      <div class="row">
+        <div><label>Chunk length (min) — long-session split</label><input id="chunkMin" type="number" value="5" /></div>
+        <div><label>Malayalam translation-pass probability (0–1)</label><input id="transP" type="number" value="0.1" step="0.05" /></div>
+      </div>
+      <label>Weeks per month</label>
+      <input id="weeksPerMonth" type="number" value="4.33" step="0.01" />
+    </div>
+  </details>
+
+  <div class="note">
+    <b>Rates (per 1M tokens, paid tier):</b> Flash — text&nbsp;in $0.30, audio&nbsp;in $1.00, output $2.50 · Flash-Lite — $0.10 / $0.30 / $0.40. Batch mode halves all rates.<br />
+    <b>Model:</b> audio is billed by <b>duration</b> (~32 tok/s), so cost scales with session length. Recording bitrate does not affect this. Long sessions (&gt; chunk length) add a normalization pass. Estimates — tune the assumptions to your real data.<br />
+    Source: ai.google.dev/gemini-api/docs/pricing
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const RATES = {
+  flash:     { text: 0.30, audio: 1.00, out: 2.50 },
+  flashlite: { text: 0.10, audio: 0.30, out: 0.40 },
+};
+const fmt = n => '$' + (n < 1 ? n.toFixed(4) : n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}));
+
+function compute() {
+  const M = +$('minutes').value || 0;
+  const perWeek = +$('perWeek').value || 0;
+  const therapists = +$('therapists').value || 0;
+  const r0 = RATES[$('model').value];
+  const batch = $('batch').checked ? 0.5 : 1;
+  const R = { text: r0.text*batch/1e6, audio: r0.audio*batch/1e6, out: r0.out*batch/1e6 };
+
+  const audioTps = +$('audioTps').value, txPerMin = +$('txPerMin').value;
+  const fmtTok = +$('fmtTok').value, sumOut = +$('sumOut').value;
+  const chunkMin = +$('chunkMin').value || 5, transP = +$('transP').value || 0;
+  const weeksPerMonth = +$('weeksPerMonth').value || 4.33;
+
+  const audioTok = M * 60 * audioTps;
+  const txTok = M * txPerMin;                         // transcript output tokens
+  const chunked = M >= chunkMin;
+  const chunks = chunked ? Math.ceil(M / chunkMin) : 1;
+  const chunkPromptTok = chunks * 500;
+
+  // Transcription
+  const cAudio = audioTok * R.audio;
+  const cTxOut = txTok * R.out;
+  const cChunkPrompt = chunkPromptTok * R.text;
+  // Normalization (long sessions only)
+  const cNorm = chunked ? (txTok * R.text + txTok * R.out) : 0;
+  // Summary
+  const cSum = (txTok + fmtTok) * R.text + sumOut * R.out;
+  // Occasional Malayalam translation pass
+  const cTrans = transP * (txTok * R.text + txTok * R.out);
+
+  const perSession = cAudio + cTxOut + cChunkPrompt + cNorm + cSum + cTrans;
+  const sessionsPerMonth = perWeek * weeksPerMonth;
+  const perTherapist = perSession * sessionsPerMonth;
+  const perMonth = perTherapist * therapists;
+
+  $('breakdown').innerHTML = [
+    ['Transcription — audio', cAudio],
+    ['Transcription — output', cTxOut + cChunkPrompt],
+    ['Normalization pass', cNorm],
+    ['Summary (case sheet)', cSum],
+    ['Malayalam pass (avg)', cTrans],
+    ['Per session', perSession],
+  ].map(([k,v]) => `<tr><td>${k}</td><td>${fmt(v)}</td></tr>`).join('');
+
+  $('tokNote').textContent = `~${Math.round(audioTok/1000)}K audio tokens · ~${Math.round(txTok/1000)}K transcript tokens · ${chunks} chunk${chunks>1?'s':''}`;
+  $('perSession').textContent = fmt(perSession);
+  $('perTherapist').textContent = fmt(perTherapist);
+  $('perMonth').textContent = fmt(perMonth);
+  $('perYear').textContent = fmt(perMonth * 12);
+}
+
+document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', compute));
+compute();
+</script>
+</body>
+</html>
