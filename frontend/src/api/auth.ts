@@ -1,5 +1,5 @@
 import type { Clinician, ClinicianRole } from '../types';
-import { API_BASE, fetchWithAuth, token } from './base';
+import { API_BASE, fetchWithAuth, token, withNetworkRetry } from './base';
 
 type ClinicianOut = {
   id: string;
@@ -38,11 +38,14 @@ export async function googleLogin(
   mode: LoginMode = 'individual',
   clinicName?: string,
 ): Promise<LoginResult> {
-  const resp = await fetch(`${API_BASE}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ credential, mode, clinic_name: clinicName }),
-  });
+  // Retry only transport-level failures (cold start / blip) — not HTTP errors.
+  const resp = await withNetworkRetry(() =>
+    fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential, mode, clinic_name: clinicName }),
+    }),
+  );
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error((err as { detail?: string }).detail ?? `Login failed: ${resp.status}`);
@@ -72,7 +75,7 @@ export async function registerClinic(
 
 // Verify existing token and return clinician (used on page load)
 export async function getMe(): Promise<Clinician> {
-  const resp = await fetchWithAuth('/api/auth/me');
+  const resp = await withNetworkRetry(() => fetchWithAuth('/api/auth/me'));
   if (!resp.ok) throw new Error('Not authenticated');
   return toClinician((await resp.json()) as ClinicianOut);
 }
@@ -80,7 +83,7 @@ export async function getMe(): Promise<Clinician> {
 // Public — whether the clinic sign-in path should be shown on the login screen
 export async function getAuthConfig(): Promise<{ clinicEnabled: boolean }> {
   try {
-    const resp = await fetch(`${API_BASE}/api/auth/config`);
+    const resp = await withNetworkRetry(() => fetch(`${API_BASE}/api/auth/config`));
     if (!resp.ok) return { clinicEnabled: false };
     const data = (await resp.json()) as { clinic_enabled: boolean };
     return { clinicEnabled: data.clinic_enabled };
