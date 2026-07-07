@@ -1,4 +1,4 @@
-import { ArrowLeft, FileText, Lock, MicOff, Mic, ShieldCheck, Trash2, UserCheck, Check, X } from 'lucide-react';
+import { ArrowLeft, FileText, Lock, MicOff, Mic, Play, ShieldCheck, Trash2, UserCheck, Check, X } from 'lucide-react';
 
 type Props = {
   onBack: () => void;
@@ -37,6 +37,29 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
           So Aura is built around a simple promise: the recording is never kept. Here's exactly
           how every session is protected.
         </p>
+
+        {/* ── Intro video ── */}
+        <div className="mb-14">
+          <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3" style={{ fontFamily: 'var(--font-mono)' }}>
+            Watch the walkthrough
+          </p>
+          <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-border bg-card shadow-sm">
+            <iframe
+              src="https://www.loom.com/embed/ec845fdb182b4461aa81443287b9621e"
+              title="How Aura protects your privacy"
+              allowFullScreen
+              className="absolute inset-0 w-full h-full"
+            />
+          </div>
+          <a
+            href="https://www.loom.com/share/ec845fdb182b4461aa81443287b9621e"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Play className="size-3.5" /> Watch on Loom
+          </a>
+        </div>
 
         {/* ── The headline promise ── */}
         <div className="p-6 sm:p-8 bg-card border border-border rounded-2xl mb-14 shadow-sm">
