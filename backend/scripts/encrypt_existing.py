@@ -27,12 +27,44 @@ from dotenv import load_dotenv  # noqa: E402
 # where the vars are already injected into the environment.)
 load_dotenv(dotenv_path=_ROOT / ".env")
 
-from backend.db import Summary  # noqa: E402
+from backend.db import AppointmentSession, Group, Patient, Summary  # noqa: E402
 from backend.db.session import SessionLocal  # noqa: E402
-from backend.services.crypto import PREFIX, encrypt, is_enabled  # noqa: E402
+from backend.services.crypto import encrypt, is_enabled, is_encrypted  # noqa: E402
 
-FIELDS = ("transcription", "ai_summary", "clinician_notes")
+# Every table + column that holds encrypted PHI at rest.
+TARGETS = (
+    (Summary, ("transcription", "ai_summary", "clinician_notes")),
+    (Patient, ("name",)),                 # patient names
+    (Group, ("label",)),                  # e.g. "Asha & Ravi"
+    (AppointmentSession, ("label",)),     # appointment label (often name-derived)
+)
 BATCH = 200
+
+
+def _backfill_model(db, model, fields):
+    """Encrypt any un-encrypted values in `fields` for all rows of `model`."""
+    scanned = 0
+    changed_rows = 0
+    changed_fields = 0
+    for row in db.query(model).all():
+        scanned += 1
+        row_touched = False
+        for field in fields:
+            value = getattr(row, field)
+            if value is None or is_encrypted(value):  # skip NULLs + already-encrypted
+                continue
+            setattr(row, field, encrypt(value))
+            changed_fields += 1
+            row_touched = True
+        if row_touched:
+            changed_rows += 1
+        if changed_rows and changed_rows % BATCH == 0:
+            db.commit()
+    db.commit()
+    print(
+        f"[backfill] {model.__tablename__}: scanned {scanned}, "
+        f"encrypted {changed_fields} fields across {changed_rows} rows."
+    )
 
 
 def main() -> None:
@@ -41,32 +73,10 @@ def main() -> None:
         return
 
     db = SessionLocal()
-    scanned = 0
-    changed_rows = 0
-    changed_fields = 0
     try:
-        rows = db.query(Summary).all()
-        for row in rows:
-            scanned += 1
-            row_touched = False
-            for field in FIELDS:
-                value = getattr(row, field)
-                # Skip NULLs and anything already encrypted.
-                if value is None or value.startswith(PREFIX):
-                    continue
-                setattr(row, field, encrypt(value))
-                changed_fields += 1
-                row_touched = True
-            if row_touched:
-                changed_rows += 1
-            if changed_rows and changed_rows % BATCH == 0:
-                db.commit()
-                print(f"[backfill] committed {changed_rows} rows so far…")
-        db.commit()
-        print(
-            f"[backfill] done — scanned {scanned} rows, "
-            f"encrypted {changed_fields} fields across {changed_rows} rows."
-        )
+        for model, fields in TARGETS:
+            _backfill_model(db, model, fields)
+        print("[backfill] done.")
     except Exception:
         db.rollback()
         raise

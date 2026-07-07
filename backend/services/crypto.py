@@ -41,6 +41,11 @@ _fernet: Optional[MultiFernet] = None
 _loaded = False
 
 
+def is_encrypted(value: Optional[str]) -> bool:
+    """True if a stored value is already in the encrypted format."""
+    return isinstance(value, str) and value.startswith(PREFIX)
+
+
 def _get_fernet() -> Optional[MultiFernet]:
     """Lazily build the MultiFernet from ENCRYPTION_KEY (cached). None = disabled."""
     global _fernet, _loaded

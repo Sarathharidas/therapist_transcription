@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from backend.db import Clinician, Group, GroupMember, Patient
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
+from backend.services.crypto import decrypt, encrypt
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
@@ -46,7 +47,8 @@ def _initials(name: str) -> str:
 
 
 def _member_out(p: Patient) -> MemberOut:
-    return MemberOut(patient_id=str(p.patient_id), name=p.name, initials=_initials(p.name))
+    name = decrypt(p.name) or ""
+    return MemberOut(patient_id=str(p.patient_id), name=name, initials=_initials(name))
 
 
 def _group_out(db: Session, group: Group) -> GroupOut:
@@ -58,7 +60,7 @@ def _group_out(db: Session, group: Group) -> GroupOut:
     )
     return GroupOut(
         group_id=str(group.group_id),
-        label=group.label,
+        label=decrypt(group.label) or "",
         created_at=str(group.created_at),
         members=[_member_out(p) for p in members],
     )
@@ -113,7 +115,7 @@ def create_group(
             raise HTTPException(status_code=404, detail=f"Patient not found: {pid}")
         member_ids.append(puid)
 
-    group = Group(clinician_id=clinician.clinician_id, label=label)
+    group = Group(clinician_id=clinician.clinician_id, label=encrypt(label))
     db.add(group)
     db.flush()  # populate group_id
 

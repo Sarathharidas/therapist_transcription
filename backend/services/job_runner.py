@@ -14,7 +14,7 @@ import uuid
 
 from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant
 from backend.db.session import SessionLocal
-from backend.services.crypto import encrypt
+from backend.services.crypto import decrypt, encrypt
 from backend.services.gemini import get_service
 
 
@@ -62,7 +62,7 @@ def run_job(job_id: str) -> None:
         if not participant_ids:
             participant_ids = [job.patient_id]  # solo / legacy job
         names_hint = [
-            p.name
+            decrypt(p.name)
             for p in db.query(Patient).filter(Patient.patient_id.in_(participant_ids)).all()
         ]
 

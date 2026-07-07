@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.db import Clinician, Patient
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
+from backend.services.crypto import decrypt, encrypt
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -37,10 +38,11 @@ def _initials(name: str) -> str:
 
 
 def _to_out(p: Patient) -> PatientOut:
+    name = decrypt(p.name) or ""
     return PatientOut(
         patient_id=str(p.patient_id),
-        name=p.name,
-        initials=_initials(p.name),
+        name=name,
+        initials=_initials(name),
         created_at=str(p.created_at),
     )
 
@@ -73,7 +75,7 @@ def create_patient(
     if not name:
         raise HTTPException(status_code=422, detail="Patient name cannot be empty")
 
-    patient = Patient(name=name, clinician_id=clinician.clinician_id)
+    patient = Patient(name=encrypt(name), clinician_id=clinician.clinician_id)
     db.add(patient)
     db.commit()
     db.refresh(patient)

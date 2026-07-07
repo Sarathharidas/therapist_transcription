@@ -147,11 +147,18 @@ The clinician row is seeded from `CLINICIAN_EMAIL` / `CLINICIAN_NAME` in `.env`.
 
 ### PHI encryption at rest
 
-`summaries.transcription`, `summaries.ai_summary`, and `summaries.clinician_notes`
-are encrypted at rest when `ENCRYPTION_KEY` is set (`services/crypto.py`, Fernet).
-- **Transparent to the frontend** — the backend `encrypt()`s on write (`job_runner.py`,
-  notes save) and `decrypt()`s on read (the 3 read sites in `routes/sessions.py`); the
-  API still returns/accepts plaintext, so no client change.
+These columns are encrypted at rest when `ENCRYPTION_KEY` is set (`services/crypto.py`, Fernet):
+`summaries.transcription`, `summaries.ai_summary`, `summaries.clinician_notes`,
+**`patients.name`**, **`groups.label`**, and **`sessions.label`** (labels often embed patient
+names, e.g. "Asha & Ravi").
+- **Transparent to the frontend** — the backend `encrypt()`s on write and `decrypt()`s on
+  read across `patients.py` / `groups.py` / `sessions.py` / `job_runner.py`; the API still
+  returns/accepts plaintext, so no client change.
+- **Names need special handling** — because Fernet is non-deterministic, you can't
+  `ORDER BY`/`WHERE` an encrypted name. Participant lists are therefore sorted in Python
+  after decryption (see `_pname` / `_segment_participants` in `sessions.py`); there are no
+  name equality lookups or unique constraints. The AI name-hint (`job_runner`) decrypts
+  names before passing them to Gemini. Client-side patient search works on decrypted names.
 - **Opt-in + mixed-safe** — no key = values stored as plaintext (local dev / tests
   unaffected). A `enc:1:` marker tags ciphertext so `decrypt()` handles a mix of legacy
   plaintext and encrypted rows. Columns stay `TEXT` (ciphertext is base64) — no migration.

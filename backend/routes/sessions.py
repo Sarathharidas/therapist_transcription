@@ -164,19 +164,29 @@ def _summary_snippet(text: str, limit: int = 60) -> str:
     return strip_md(text)[:limit]
 
 
+def _pname(p: Patient) -> str:
+    """Decrypted patient name (names are encrypted at rest)."""
+    return decrypt(p.name) or ""
+
+
 def _participant_out(p: Patient) -> ParticipantOut:
-    return ParticipantOut(patient_id=str(p.patient_id), name=p.name, initials=_initials(p.name))
+    name = _pname(p)
+    return ParticipantOut(patient_id=str(p.patient_id), name=name, initials=_initials(name))
 
 
 def _segment_participants(db: Session, summary_id) -> List[Patient]:
-    """Patients recorded as present in a given segment, ordered by name."""
-    return (
+    """Patients recorded as present in a given segment, ordered by name.
+
+    Sorting is done in Python (not SQL ORDER BY) because names are encrypted at
+    rest, so a database-level sort would order by ciphertext.
+    """
+    rows = (
         db.query(Patient)
         .join(SummaryParticipant, SummaryParticipant.patient_id == Patient.patient_id)
         .filter(SummaryParticipant.summary_id == summary_id)
-        .order_by(Patient.name.asc())
         .all()
     )
+    return sorted(rows, key=lambda p: _pname(p).lower())
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -215,10 +225,11 @@ def create_appointment(
             db.query(Patient)
             .join(GroupMember, GroupMember.patient_id == Patient.patient_id)
             .filter(GroupMember.group_id == group_uuid)
-            .order_by(Patient.name.asc())
             .all()
         )
-        label = label or group.label
+        # Sort in Python — names are encrypted, so a SQL ORDER BY would sort ciphertext.
+        participants.sort(key=lambda p: _pname(p).lower())
+        label = label or decrypt(group.label)
     elif body.participant_ids:
         for pid in body.participant_ids:
             try:
@@ -243,12 +254,12 @@ def create_appointment(
         raise HTTPException(status_code=422, detail="An appointment needs at least two participants")
 
     if not label:
-        label = " & ".join(p.name.split()[0] for p in participants)
+        label = " & ".join(_pname(p).split()[0] for p in participants if _pname(p).split())
 
     appt = AppointmentSession(
         clinician_id=clinician.clinician_id,
         group_id=group_uuid,
-        label=label,
+        label=encrypt(label),  # label may embed patient names — encrypt at rest
     )
     db.add(appt)
     db.commit()
@@ -485,11 +496,11 @@ def list_recent_sessions(
         snippet = _summary_snippet(decrypt(summary.ai_summary) or "")
         result.append(RecentSessionOut(
             summary_id=str(summary.summary_id),
-            patient_name=patient.name,
+            patient_name=decrypt(patient.name) or "",
             date=_format_date(summary.created_at),
             note_snippet=snippet or "Session recorded",
             session_id=str(summary.session_id) if summary.session_id else None,
-            session_label=appt.label if appt else None,
+            session_label=(decrypt(appt.label) if appt else None),
             segment_type=summary.segment_type,
         ))
     return result
@@ -544,7 +555,7 @@ def get_appointment(
 
     return AppointmentDetailOut(
         session_id=str(appt.session_id),
-        label=appt.label or "Appointment",
+        label=decrypt(appt.label) or "Appointment",
         date=_format_date(appt.created_at),
         participants=[_participant_out(p) for p in roster.values()],
         segments=segments,
@@ -574,7 +585,7 @@ def get_session(
     return SessionDetailOut(
         summary_id=str(summary.summary_id),
         patient_id=str(summary.patient_id),
-        patient_name=patient.name,
+        patient_name=decrypt(patient.name) or "",
         transcript=decrypt(summary.transcription) or "",
         summary=decrypt(summary.ai_summary) or "",
         clinician_notes=decrypt(summary.clinician_notes),
