@@ -472,6 +472,28 @@ def _names_hint(names: Optional[List[str]]) -> str:
     )
 
 
+# Clinician voice note — single-speaker dictation (no Therapist/Patient labels).
+NOTE_TRANSCRIPT_PROMPT = """
+You are transcribing a short voice note dictated by a clinician (a single speaker).
+
+Produce clean, readable text of what the clinician says:
+- Add natural punctuation and capitalisation.
+- Remove filler words (um, uh, like) and false starts.
+- Do NOT add, summarise, interpret, or invent anything — only what was said.
+- Do NOT add speaker labels.
+
+Language rules:
+- The note may be a mix of Malayalam and English (Manglish / code-switching).
+- Output everything in natural English only.
+- English speech → transcribe verbatim (lightly cleaned).
+- Malayalam speech → translate to natural English.
+- NEVER output Malayalam script or romanised Malayalam — translate the meaning,
+  do not transliterate. (Proper nouns such as names and places may stay as-is.)
+
+Output ONLY the note text — no preamble, no commentary.
+"""
+
+
 class GeminiService:
     def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -534,6 +556,20 @@ class GeminiService:
         ])
         print(f"[gemini] Transcript: {len(transcript)} chars")
         return transcript
+
+    def transcribe_note(self, audio_path: str, mime_type: str = "audio/webm") -> str:
+        """
+        Transcribe a short clinician voice note (single-speaker dictation) to
+        English — no speaker labels, no chunking. Deletes the uploaded Gemini
+        file after use (caller deletes the local temp file). Runs the English-only
+        guard so no Malayalam script leaks through.
+        """
+        audio_file = self.upload_file(audio_path, mime_type)
+        try:
+            text = self.transcribe(audio_file, mime_type, prompt=NOTE_TRANSCRIPT_PROMPT)
+        finally:
+            self.delete_file(audio_file)
+        return self._ensure_english(text)
 
     def summarize(self, transcript: str, fmt: Optional[str] = None) -> str:
         """

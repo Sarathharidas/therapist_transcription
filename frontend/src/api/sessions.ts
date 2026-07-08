@@ -6,7 +6,7 @@ import type {
   SegmentType,
   SessionDetail,
 } from '../types';
-import { fetchWithAuth } from './base';
+import { fetchWithAuth, withNetworkRetry } from './base';
 
 // Extra metadata for a group/couple segment. Omit entirely for a solo session.
 export type SegmentMeta = {
@@ -213,6 +213,22 @@ export async function saveNotes(summaryId: string, notes: string): Promise<void>
     const err = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error((err as { detail?: string }).detail ?? `Error ${resp.status}`);
   }
+}
+
+// Transcribe a short clinician voice note → returns the (English) text.
+// Audio is not stored server-side; the text is saved via saveNotes().
+export async function transcribeNote(audio: Blob): Promise<string> {
+  const resp = await withNetworkRetry(() => {
+    const form = new FormData();
+    form.append('audio', audio, 'note.webm');
+    return fetchWithAuth('/api/sessions/transcribe-note', { method: 'POST', body: form });
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `Transcription failed: ${resp.status}`);
+  }
+  const data = (await resp.json()) as { text: string };
+  return data.text;
 }
 
 // Keep old name as alias so any other imports don't break

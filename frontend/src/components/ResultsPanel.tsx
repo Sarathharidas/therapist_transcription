@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Check, ChevronDown, ChevronRight, Copy, Loader2 } from 'lucide-react';
-import { saveNotes } from '../api/sessions';
+import { useEffect, useState } from 'react';
+import { Check, ChevronDown, ChevronRight, Copy, Loader2, Mic, Square } from 'lucide-react';
+import { saveNotes, transcribeNote } from '../api/sessions';
+import { useRecorder } from '../hooks/useRecorder';
 import type { SessionResult } from '../types';
 
 type Props = {
@@ -113,6 +114,44 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [focus, setFocus] = useState<Focus>('both');
+
+  // Voice-note dictation → transcribed English text appended to the notes box.
+  const { state: recState, blob: recBlob, start: startRec, stop: stopRec, reset: resetRec } = useRecorder();
+  const [transcribing, setTranscribing] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  // When the dictation recorder stops → transcribe and append to the notes.
+  useEffect(() => {
+    if (recState !== 'stopped' || !recBlob) return;
+    let alive = true;
+    (async () => {
+      setTranscribing(true);
+      setNoteError(null);
+      try {
+        const text = (await transcribeNote(recBlob)).trim();
+        if (alive && text) {
+          setNotes((prev) => (prev.trim() ? `${prev.trimEnd()}\n${text}` : text));
+        }
+      } catch (err) {
+        if (alive) setNoteError(err instanceof Error ? err.message : 'Could not transcribe the note.');
+      } finally {
+        if (alive) setTranscribing(false);
+        resetRec();
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recState, recBlob]);
+
+  const handleMic = async () => {
+    if (recState === 'recording') { stopRec(); return; }
+    setNoteError(null);
+    try {
+      await startRec();
+    } catch {
+      setNoteError('Microphone access denied. Please allow mic permissions.');
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -243,9 +282,28 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
               >
                 Clinician Notes
               </h4>
-              <span className="text-[10px] text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
-                Private
-              </span>
+              <div className="flex items-center gap-3">
+                {/* Dictate a voice note → transcribed + appended (audio not stored) */}
+                <button
+                  onClick={handleMic}
+                  disabled={transcribing}
+                  title="Dictate a note (audio isn't stored)"
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                    recState === 'recording' ? 'text-red-600' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {transcribing ? (
+                    <><Loader2 className="size-3.5 animate-spin" /> Transcribing…</>
+                  ) : recState === 'recording' ? (
+                    <><Square className="size-3 fill-current" /> Stop</>
+                  ) : (
+                    <><Mic className="size-3.5" /> Dictate</>
+                  )}
+                </button>
+                <span className="text-[10px] text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
+                  Private
+                </span>
+              </div>
             </div>
             <textarea
               value={notes}
@@ -253,6 +311,9 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
               placeholder="Write your observations, reflections, or next steps…"
               className="w-full min-h-[72px] lg:min-h-[120px] bg-background border border-border rounded-lg p-3 text-sm leading-relaxed resize-none lg:resize-y focus:outline-none focus:ring-1 focus:ring-accent/40 placeholder:text-muted-foreground/60"
             />
+            {noteError && (
+              <p className="mt-2 text-xs text-red-600">⚠️ {noteError}</p>
+            )}
             {saveError && (
               <p className="mt-2 text-xs text-red-600">⚠️ {saveError}</p>
             )}

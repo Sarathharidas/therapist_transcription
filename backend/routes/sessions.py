@@ -31,9 +31,12 @@ from backend.db import (
     Summary,
     SummaryParticipant,
 )
+from starlette.concurrency import run_in_threadpool
+
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
 from backend.services.crypto import decrypt, encrypt
+from backend.services.gemini import get_service
 from backend.services.job_runner import run_job
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -617,3 +620,41 @@ def save_notes(
     db.commit()
     print(f"[notes] Saved {len(body.notes)} chars to summary {summary_id}")
     return {"ok": True}
+
+
+@router.post("/transcribe-note")
+async def transcribe_note(
+    audio: UploadFile = File(...),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """
+    Transcribe a short clinician voice note (single-speaker dictation) to English
+    and return the text. No session, no summary, and NO audio storage — the temp
+    file is deleted immediately after transcription. The clinician reviews the
+    returned text in the notes box and saves it via /{summary_id}/notes (where it
+    is encrypted). Audio is never persisted.
+    """
+    mime_type = audio.content_type or "audio/webm"
+    suffix = ".mp4" if "mp4" in mime_type else ".webm"
+    tmp_path = os.path.join(tempfile.gettempdir(), f"aura_note_{uuid.uuid4()}{suffix}")
+
+    try:
+        total = 0
+        with open(tmp_path, "wb") as f:
+            while True:
+                chunk = await audio.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Voice note too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)",
+                    )
+                f.write(chunk)
+        # Run the blocking Gemini call off the event loop.
+        text = await run_in_threadpool(get_service().transcribe_note, tmp_path, mime_type)
+        return {"text": text}
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
