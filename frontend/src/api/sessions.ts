@@ -215,6 +215,19 @@ export async function saveNotes(summaryId: string, notes: string): Promise<void>
   }
 }
 
+// Save a therapist-edited AI summary (whole reassembled markdown; encrypted at rest).
+export async function saveSummary(summaryId: string, summary: string): Promise<void> {
+  const resp = await fetchWithAuth(`/api/sessions/${summaryId}/summary`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error((err as { detail?: string }).detail ?? `Error ${resp.status}`);
+  }
+}
+
 // Transcribe a short clinician voice note → returns the (English) text.
 // Audio is not stored server-side; the text is saved via saveNotes().
 export async function transcribeNote(audio: Blob): Promise<string> {

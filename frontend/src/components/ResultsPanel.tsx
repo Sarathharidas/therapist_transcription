@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, Loader2, Mic, Square } from 'lucide-react';
 import { saveNotes, transcribeNote } from '../api/sessions';
 import { useRecorder } from '../hooks/useRecorder';
+import { EditableSummary } from './EditableSummary';
 import type { SessionResult } from '../types';
 
 type Props = {
@@ -30,60 +31,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function renderSummary(text: string): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  // Inline: **bold** → <strong>. "Not discussed" is dimmed so filled fields stand out.
-  const inline = (s: string) =>
-    esc(s)
-      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
-      .replace(/Not discussed/g, '<span class="text-muted-foreground/60 italic">Not discussed</span>');
-
-  const lines = text.split('\n');
-  const html: string[] = [];
-  let inList = false;
-  const closeList = () => {
-    if (inList) {
-      html.push('</ul>');
-      inList = false;
-    }
-  };
-
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) {
-      closeList();
-      continue;
-    }
-    // ## / ### headings
-    const h = line.match(/^(#{2,3})\s+(.*)$/);
-    if (h) {
-      closeList();
-      const cls =
-        h[1].length === 2
-          ? 'text-sm font-semibold text-foreground mt-5 mb-2 first:mt-0 pb-1 border-b border-border/50'
-          : 'text-[13px] font-semibold text-foreground mt-3 mb-1';
-      html.push(`<h4 class="${cls}">${inline(h[2])}</h4>`);
-      continue;
-    }
-    // - bullet list items
-    const li = line.match(/^[-*]\s+(.*)$/);
-    if (li) {
-      if (!inList) {
-        html.push('<ul class="space-y-1 mb-3">');
-        inList = true;
-      }
-      html.push(`<li>${inline(li[1])}</li>`);
-      continue;
-    }
-    // paragraph
-    closeList();
-    html.push(`<p class="mb-3 last:mb-0">${inline(line)}</p>`);
-  }
-  closeList();
-  return html.join('');
-}
-
 function stripTimestamps(text: string): string {
   // Remove common Gemini timestamp formats: [00:01:23], [0:00], (00:01:23), (0:00)
   return text.replace(/[\[(]\d{1,2}:\d{2}(?::\d{2})?\s*[\])][\s]*/g, '');
@@ -109,6 +56,7 @@ function formatDuration(seconds: number): string {
 type Focus = 'both' | 'transcript' | 'summary';
 
 export function ResultsPanel({ result, durationSeconds, patientName, initialNotes = '', dateLabel }: Props) {
+  const [summary, setSummary] = useState(result.summary);
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -257,15 +205,16 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
                     ? <ChevronRight className="size-3.5 text-muted-foreground" />
                     : <ChevronDown className="size-3.5 text-muted-foreground" />}
                 </div>
-                <CopyButton text={result.summary} />
+                <CopyButton text={summary} />
               </div>
             </button>
 
-            {/* Independently scrollable summary text */}
+            {/* Independently scrollable summary — each section individually editable */}
             <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8 lg:px-12 py-4">
-              <div
-                className="text-sm leading-relaxed text-foreground/90"
-                dangerouslySetInnerHTML={{ __html: renderSummary(result.summary) }}
+              <EditableSummary
+                summaryId={result.summary_id}
+                summary={summary}
+                onSaved={setSummary}
               />
             </div>
 

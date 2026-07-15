@@ -55,6 +55,10 @@ class NotesUpdate(BaseModel):
     notes: str
 
 
+class SummaryUpdate(BaseModel):
+    summary: str
+
+
 class JobStatusOut(BaseModel):
     job_id: str
     status: str   # pending | uploading | transcribing | summarizing | complete | failed
@@ -619,6 +623,33 @@ def save_notes(
     summary_row.clinician_notes = encrypt(body.notes)
     db.commit()
     print(f"[notes] Saved {len(body.notes)} chars to summary {summary_id}")
+    return {"ok": True}
+
+
+@router.patch("/{summary_id}/summary", status_code=200)
+def save_summary(
+    summary_id: str,
+    body: SummaryUpdate,
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Save a therapist-edited AI summary (encrypted at rest). Whole-blob save;
+    the frontend edits individual sections and sends the reassembled summary."""
+    summary_row = (
+        db.query(Summary)
+        .join(Patient, Summary.patient_id == Patient.patient_id)
+        .filter(
+            Summary.summary_id == uuid.UUID(summary_id),
+            Patient.clinician_id == clinician.clinician_id,
+        )
+        .first()
+    )
+    if not summary_row:
+        raise HTTPException(status_code=404, detail="Summary not found")
+
+    summary_row.ai_summary = encrypt(body.summary)
+    db.commit()
+    print(f"[summary] Saved {len(body.summary)} chars to summary {summary_id}")
     return {"ok": True}
 
 
