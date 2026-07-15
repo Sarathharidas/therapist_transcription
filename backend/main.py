@@ -127,6 +127,14 @@ _COLUMN_MIGRATIONS = (
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS clinic_id UUID",
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'therapist'",
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS summary_format TEXT",
+    # Billing / subscription (Phase 1)
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS seconds_balance INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS plan TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS subscription_status TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS trial_ends_at TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS current_period_end TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS razorpay_customer_id TEXT",
+    "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS razorpay_subscription_id TEXT",
 )
 
 

@@ -5,7 +5,7 @@ Auth routes
   GET  /api/auth/config  — public: whether the clinic sign-in path is available
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.db import Clinic, ClinicInvite, Clinician
 from backend.db.session import get_db
+from backend.services.billing import TRIAL_DAYS
 from backend.services.auth import (
     create_jwt,
     get_current_clinician,
@@ -80,6 +81,15 @@ def _clinic_by_name(db: Session, name: str) -> Optional[Clinic]:
     if not n:
         return None
     return db.query(Clinic).filter(Clinic.name.ilike(n)).first()
+
+
+def _start_trial(clinician: Clinician) -> None:
+    """Start a 14-day free trial on a newly created clinician (idempotent)."""
+    if clinician.subscription_status is None and clinician.trial_ends_at is None:
+        clinician.subscription_status = "trial"
+        clinician.trial_ends_at = (
+            datetime.now(tz=timezone.utc) + timedelta(days=TRIAL_DAYS)
+        ).isoformat()
 
 
 @router.get("/config", response_model=AuthConfigOut)
@@ -171,6 +181,7 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
                 email=email, name=name, google_id=google_id,
                 clinic_id=clinic.clinic_id, role=invite.role,
             )
+            _start_trial(clinician)
             db.add(clinician)
             db.flush()
         invite.status = "accepted"
@@ -194,6 +205,7 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
         return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
     new_clinician = Clinician(email=email, name=name, google_id=google_id)
+    _start_trial(new_clinician)
     db.add(new_clinician)
     try:
         db.commit()
@@ -258,6 +270,7 @@ def register_clinic(body: ClinicRegisterRequest, db: Session = Depends(get_db)):
             email=email, name=name, google_id=google_id,
             clinic_id=clinic.clinic_id, role="admin",
         )
+        _start_trial(clinician)
         db.add(clinician)
     db.flush()
 

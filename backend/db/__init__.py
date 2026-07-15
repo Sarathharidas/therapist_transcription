@@ -17,7 +17,7 @@ jobs                (job_id, patient_id FK, clinician_id FK, session_id FK,
                      error, audio_path, mime_type, created_at)
 """
 
-from sqlalchemy import Column, ForeignKey, Text
+from sqlalchemy import Column, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import text
@@ -99,6 +99,37 @@ class Clinician(Base):
     # Custom summary/case-sheet format for this therapist. NULL = use the
     # built-in DEFAULT_SUMMARY_FORMAT. Edited via /api/settings/summary-format.
     summary_format = Column(Text, nullable=True)
+
+    # ── Billing / subscription (Phase 1: per-therapist, hours-metered) ──
+    # Credit wallet in seconds — unused hours carry forward. Deducted per session,
+    # topped up by plan hours on each successful charge. See services/billing.py.
+    seconds_balance = Column(Integer, nullable=False, server_default=text("0"))
+    plan = Column(Text, nullable=True)                 # 'solo' | 'practice' | NULL
+    subscription_status = Column(Text, nullable=True)  # trial|active|past_due|cancelled|expired
+    trial_ends_at = Column(Text, nullable=True)        # ISO ts — set at signup (+14d)
+    current_period_end = Column(Text, nullable=True)   # ISO ts — next renewal
+    razorpay_customer_id = Column(Text, nullable=True)
+    razorpay_subscription_id = Column(Text, nullable=True)
+
+
+class UsageRecord(Base):
+    """One row per metered transcription — powers the usage dashboard + history.
+    Voice notes are NOT recorded here (they don't count toward hours)."""
+    __tablename__ = "usage_records"
+
+    usage_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    clinician_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinicians.clinician_id"),
+        nullable=False,
+    )
+    seconds = Column(Integer, nullable=False)          # audio duration billed
+    kind = Column(Text, nullable=True)                 # 'session' | 'segment'
+    created_at = Column(Text, nullable=False, server_default=text("now()"))
 
 
 class Patient(Base):
