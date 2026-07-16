@@ -51,12 +51,12 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [phase]);
 
-  const runSubmit = useCallback(async (audioBlob: Blob) => {
+  const runSubmit = useCallback(async (audioBlob: Blob, durationSeconds?: number) => {
     setError(null);
     try {
       // POST audio — returns in < 1s with a job_id; the backend processes
       // the transcription as a true background job from here on.
-      const jobId = await submitSession(audioBlob, patient.id);
+      const jobId = await submitSession(audioBlob, patient.id, undefined, durationSeconds);
       console.log(`[session] Job submitted: ${jobId}`);
       if (!activeRef.current) return;
       onProcessingStarted();
@@ -85,8 +85,8 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
   const handleRetry = useCallback(() => {
     if (!blob) return;
     setPhase('submitting');
-    runSubmit(blob);
-  }, [blob, runSubmit]);
+    runSubmit(blob, elapsed);
+  }, [blob, runSubmit, elapsed]);
 
   // Give up on this recording and start over.
   const handleDiscard = useCallback(() => {
@@ -100,7 +100,7 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
   useEffect(() => {
     if (recorderState === 'stopped' && blob) {
       setPhase('submitting');
-      runSubmit(blob);
+      runSubmit(blob, elapsed);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorderState, blob]);

@@ -106,7 +106,11 @@ def run_job(job_id: str) -> None:
         # ── Meter usage: log the hours + deduct from an active subscriber's
         #    carry-forward wallet. Trial users are gated by time, not credits, so
         #    their balance is left untouched. Voice notes are never metered.
-        duration = service._get_duration(audio_path)
+        #    Prefer the browser-reported duration (no ffprobe dependency); fall
+        #    back to ffprobe only if it wasn't sent.
+        duration = job.duration_seconds or service._get_duration(audio_path)
+        print(f"[job_runner] {job_id} metering: clinician={bool(clinician)} "
+              f"duration={duration} status={clinician.subscription_status if clinician else None}")
         if clinician and duration:
             secs = int(duration)
             db.add(UsageRecord(

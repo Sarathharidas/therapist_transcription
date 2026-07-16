@@ -90,7 +90,7 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
     return () => clearInterval(id);
   }, [segments]);
 
-  const runSubmit = useCallback(async (audioBlob: Blob, cfg: Config) => {
+  const runSubmit = useCallback(async (audioBlob: Blob, cfg: Config, durationSeconds?: number) => {
     setError(null);
     const participants = cfg.kind === 'joint' ? appointment.participants : [cfg.participant];
     const participantIds = participants.map((p) => p.id);
@@ -100,7 +100,7 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
         sessionId: appointment.sessionId,
         segmentType: cfg.kind === 'joint' ? 'joint' : 'individual',
         participantIds,
-      });
+      }, durationSeconds);
       if (!activeRef.current) return;
       setSegments((prev) => [
         ...prev,
@@ -142,8 +142,8 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
   const handleRetry = useCallback(() => {
     if (!blob) return;
     setPhase('submitting');
-    runSubmit(blob, config);
-  }, [blob, config, runSubmit]);
+    runSubmit(blob, config, elapsed);
+  }, [blob, config, runSubmit, elapsed]);
 
   // Discard the failed segment and return to ready (keeps already-saved segments).
   const handleDiscard = useCallback(() => {
@@ -157,7 +157,7 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
   useEffect(() => {
     if (recorderState === 'stopped' && blob) {
       setPhase('submitting');
-      runSubmit(blob, config);
+      runSubmit(blob, config, elapsed);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recorderState, blob]);

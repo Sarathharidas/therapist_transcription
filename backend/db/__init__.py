@@ -346,6 +346,9 @@ class Job(Base):
     audio_path = Column(Text, nullable=True)
     # MIME type detected from the upload (handles iOS audio/mp4 vs webm)
     mime_type = Column(Text, nullable=True, default="audio/webm")
+    # Recording length reported by the browser — used to meter billing hours
+    # without depending on server-side ffprobe.
+    duration_seconds = Column(Integer, nullable=True)
     created_at = Column(
         Text,
         nullable=False,

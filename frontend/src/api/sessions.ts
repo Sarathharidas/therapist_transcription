@@ -36,11 +36,13 @@ export async function submitSession(
   audio: Blob,
   patientId: string,
   meta?: SegmentMeta,
+  durationSeconds?: number,
 ): Promise<string> {
   const buildForm = () => {
     const form = new FormData();
     form.append('audio', audio, 'session.webm');
     form.append('patient_id', patientId);
+    if (durationSeconds != null) form.append('duration_seconds', String(Math.round(durationSeconds)));
     if (meta) {
       form.append('session_id', meta.sessionId);
       form.append('segment_type', meta.segmentType);

@@ -290,6 +290,7 @@ async def submit_session(
     session_id: Optional[str] = Form(None),
     segment_type: Optional[str] = Form(None),
     participant_ids: Optional[str] = Form(None),  # comma-separated patient UUIDs
+    duration_seconds: Optional[str] = Form(None),  # browser-reported recording length
     db: Session = Depends(get_db),
     clinician: Clinician = Depends(get_current_clinician),
 ):
@@ -417,6 +418,14 @@ async def submit_session(
     size_kb = total // 1024
     print(f"[sessions] Saved {size_kb} KB to {audio_path} (mime={mime_type})")
 
+    # Parse the browser-reported recording length (used for billing metering).
+    dur = None
+    if duration_seconds:
+        try:
+            dur = max(0, int(float(duration_seconds)))
+        except (TypeError, ValueError):
+            dur = None
+
     # Create job record in DB
     job = Job(
         job_id=uuid.UUID(job_id),
@@ -428,6 +437,7 @@ async def submit_session(
         status="pending",
         audio_path=audio_path,
         mime_type=mime_type,
+        duration_seconds=dur,
     )
     db.add(job)
     db.commit()
