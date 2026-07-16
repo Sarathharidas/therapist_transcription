@@ -197,13 +197,19 @@ function AppInner() {
     }
 
     // Solo session → single summary detail
+    await handleOpenSummary(session.id);
+  };
+
+  // Open a single session's full summary by id (used by the sidebar's solo path
+  // and the "Previous sessions" links on the recording screen).
+  const handleOpenSummary = async (summaryId: string) => {
+    setSidebarOpen(false);
     setPastSessionLoading(true);
     setPastSession(null);
     setView('past-session');
-    setActiveSummaryId(session.id);
+    setActiveSummaryId(summaryId);
     try {
-      const detail = await getSession(session.id);
-      setPastSession(detail);
+      setPastSession(await getSession(summaryId));
     } catch {
       setView('select');
       setActiveSummaryId(undefined);
@@ -421,6 +427,7 @@ function AppInner() {
             patient={selectedPatient!}
             onBack={handleNewSession}
             onProcessingStarted={handleProcessingStarted}
+            onOpenSession={handleOpenSummary}
           />
         )}
         {view === 'group-session' && appointment && (

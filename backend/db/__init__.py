@@ -172,6 +172,12 @@ class Patient(Base):
         nullable=False,
         server_default=text("now()"),
     )
+    # LLM synthesis of this patient's recent past sessions, shown on the recording
+    # screen (encrypted at rest). `history_overview_marker` records what it was
+    # built from (latest summary id + count) so it's regenerated only when a new
+    # session is added.
+    history_overview = Column(Text, nullable=True)
+    history_overview_marker = Column(Text, nullable=True)
 
 
 class Group(Base):

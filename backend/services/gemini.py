@@ -494,6 +494,24 @@ Output ONLY the note text — no preamble, no commentary.
 """
 
 
+# Synthesis of a patient's recent past sessions, shown on the recording screen.
+HISTORY_SUMMARY_PROMPT = """You are an experienced clinician preparing for a follow-up session.
+
+Below are the case-sheet summaries from a patient's recent previous sessions
+(most recent first). Write a brief overview of this patient's history to orient
+the therapist before today's session:
+
+- 2–4 short paragraphs (or tight bullet points). No headings.
+- Focus on the throughline: presenting concerns, recurring themes, progress or
+  deterioration, risk, medications, and anything to follow up on.
+- Use ONLY what is in the summaries — do not invent or assume.
+- Concise, plain clinical language.
+
+PREVIOUS SESSIONS (most recent first):
+<<<SUMMARIES>>>
+"""
+
+
 class GeminiService:
     def __init__(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -556,6 +574,17 @@ class GeminiService:
         ])
         print(f"[gemini] Transcript: {len(transcript)} chars")
         return transcript
+
+    def summarize_history(self, summaries: List[str]) -> str:
+        """Synthesise a patient's recent past-session summaries into a short
+        history overview for the recording screen. Text-only (not metered)."""
+        joined = "\n\n---\n\n".join(
+            f"[SESSION {i + 1}]\n{s}" for i, s in enumerate(summaries) if s and s.strip()
+        )
+        if not joined.strip():
+            return ""
+        print(f"[gemini] Summarising patient history from {len(summaries)} sessions…")
+        return self._generate(HISTORY_SUMMARY_PROMPT.replace("<<<SUMMARIES>>>", joined))
 
     def transcribe_note(self, audio_path: str, mime_type: str = "audio/webm") -> str:
         """

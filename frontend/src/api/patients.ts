@@ -30,6 +30,26 @@ export async function listPatients(): Promise<Patient[]> {
   return data.map(toPatient);
 }
 
+export type PatientHistory = {
+  overview: string | null;
+  sessions: { summaryId: string; date: string; snippet: string }[];
+};
+
+export async function getPatientHistory(patientId: string): Promise<PatientHistory> {
+  const resp = await fetchWithAuth(`/api/patients/${patientId}/history`);
+  if (!resp.ok) throw new Error(`Failed to load history: ${resp.status}`);
+  const d = (await resp.json()) as {
+    overview: string | null;
+    sessions: { summary_id: string; date: string; snippet: string }[];
+  };
+  return {
+    overview: d.overview,
+    sessions: (d.sessions ?? []).map((s) => ({
+      summaryId: s.summary_id, date: s.date, snippet: s.snippet,
+    })),
+  };
+}
+
 export async function createPatient(name: string): Promise<Patient> {
   const resp = await fetchWithAuth('/api/patients', {
     method: 'POST',

@@ -149,6 +149,8 @@ _COLUMN_MIGRATIONS = (
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS segment_type TEXT",
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS participant_ids TEXT",
     "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS duration_seconds INTEGER",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS history_overview TEXT",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS history_overview_marker TEXT",
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS clinic_id UUID",
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'therapist'",
     "ALTER TABLE clinicians ADD COLUMN IF NOT EXISTS summary_format TEXT",

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Mic, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronRight, History, Mic, RefreshCw } from 'lucide-react';
 import { useRecorder } from '../hooks/useRecorder';
 import { submitSession } from '../api/sessions';
+import { getPatientHistory, type PatientHistory } from '../api/patients';
 import type { Patient, SessionPhase } from '../types';
 
 type Props = {
@@ -10,9 +11,11 @@ type Props = {
   // Called once the audio has been submitted and the backend job is running.
   // The parent navigates back to patient-select and shows a "processing" notice.
   onProcessingStarted: () => void;
+  // Open a previous session's full summary.
+  onOpenSession: (summaryId: string) => void;
 };
 
-export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
+export function SessionView({ patient, onBack, onProcessingStarted, onOpenSession }: Props) {
   const { state: recorderState, blob, start, stop, reset } = useRecorder();
   const [phase, setPhase] = useState<SessionPhase>('ready');
   const [elapsed, setElapsed] = useState(0);
@@ -20,6 +23,14 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
   const startedAt = useRef<number | null>(null);
   // Used to avoid acting after the component unmounts mid-submit
   const activeRef = useRef(true);
+  // Previous sessions for this patient (recap shown before recording)
+  const [history, setHistory] = useState<PatientHistory | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getPatientHistory(patient.id).then((h) => alive && setHistory(h)).catch(() => {});
+    return () => { alive = false; };
+  }, [patient.id]);
 
   useEffect(() => {
     activeRef.current = true;
@@ -119,6 +130,7 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
   const handleStop = () => { stop(); };
 
   const formatted = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+  const hasHistory = !!history && (!!history.overview || history.sessions.length > 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -188,9 +200,60 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
         <SubmittingView patientName={patient.name} />
       ) : phase === 'failed' ? (
         <FailedView patientName={patient.name} onRetry={handleRetry} onDiscard={handleDiscard} />
+      ) : phase === 'ready' && hasHistory ? (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-5 sm:px-8 py-6 sm:py-8">
+            {/* Compact record CTA */}
+            <div className="text-center py-6 sm:py-8 border border-border rounded-2xl bg-card mb-6">
+              <button
+                onClick={handleStart}
+                className="group relative mx-auto size-16 sm:size-20 rounded-full flex items-center justify-center mb-4 bg-accent/10 hover:bg-accent/20 transition-all hover:scale-105 active:scale-95"
+              >
+                <Mic className="size-7 sm:size-8 text-accent" />
+              </button>
+              <p className="text-sm text-muted-foreground">Tap to start recording with {patient.name}.</p>
+            </div>
+            <PreviousSessions history={history!} onOpen={onOpenSession} />
+          </div>
+        </div>
       ) : (
         <RecordingIdleView phase={phase} patientName={patient.name} onStart={handleStart} onStop={handleStop} />
       )}
+    </div>
+  );
+}
+
+function PreviousSessions({ history, onOpen }: { history: PatientHistory; onOpen: (id: string) => void }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)' }}>
+        <History className="size-3" /> Previous sessions
+      </p>
+
+      {history.overview && (
+        <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl mb-5">
+          <p className="text-[11px] uppercase tracking-widest text-accent mb-2" style={{ fontFamily: 'var(--font-mono)' }}>
+            History overview
+          </p>
+          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{history.overview}</p>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {history.sessions.map((s) => (
+          <button
+            key={s.summaryId}
+            onClick={() => onOpen(s.summaryId)}
+            className="w-full text-left flex items-center justify-between gap-3 p-3 bg-card border border-border rounded-xl hover:bg-secondary/40 transition-colors"
+          >
+            <div className="min-w-0">
+              <div className="text-[11px] text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>{s.date}</div>
+              <div className="text-sm truncate text-foreground/90">{s.snippet || 'Session summary'}</div>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
