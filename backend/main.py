@@ -27,6 +27,7 @@ from backend.routes.groups import router as groups_router      # noqa: E402
 from backend.routes.patients import router as patients_router  # noqa: E402
 from backend.routes.sessions import router as sessions_router  # noqa: E402
 from backend.routes.settings import router as settings_router  # noqa: E402
+from backend.routes.billing import router as billing_router    # noqa: E402
 
 app = FastAPI(title="Aura Clinical API", version="2.0.0")
 
@@ -111,6 +112,7 @@ app.include_router(groups_router)
 app.include_router(sessions_router)
 app.include_router(clinic_router)
 app.include_router(settings_router)
+app.include_router(billing_router)
 
 
 # ── Lightweight, idempotent column migrations ─────────────────────────────

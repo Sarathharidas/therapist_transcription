@@ -15,7 +15,9 @@ import { AppointmentView } from './components/AppointmentView';
 import { TeamView } from './components/TeamView';
 import { SummaryFormatDialog } from './components/SummaryFormatDialog';
 import { HowItWorks } from './components/HowItWorks';
-import { Building2 } from 'lucide-react';
+import { BillingView } from './components/BillingView';
+import { getSubscription, type Subscription } from './api/billing';
+import { Building2, Sparkles } from 'lucide-react';
 import type {
   Appointment,
   AppointmentDetail,
@@ -44,6 +46,16 @@ function AppInner() {
   const [formatOpen, setFormatOpen] = useState(false);
   // "How it works" page shown pre-login (post-login it's a normal view)
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  // Subscription/trial status (drives the top-bar badge + billing view)
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+
+  const refreshSubscription = () => {
+    getSubscription().then(setSubscription).catch(() => setSubscription(null));
+  };
+  // Load subscription once authenticated (also lazily starts the trial server-side).
+  useEffect(() => {
+    if (clinician) refreshSubscription();
+  }, [clinician]);
 
   // Sidebar refresh + active highlight
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
@@ -90,6 +102,12 @@ function AppInner() {
 
   const handleOpenHowItWorks = () => {
     setView('how-it-works');
+    setActiveSummaryId(undefined);
+    setSidebarOpen(false);
+  };
+
+  const handleOpenBilling = () => {
+    setView('billing');
     setActiveSummaryId(undefined);
     setSidebarOpen(false);
   };
@@ -265,6 +283,8 @@ function AppInner() {
                 ? 'New Session'
                 : view === 'how-it-works'
                 ? 'How it works'
+                : view === 'billing'
+                ? 'Plans & usage'
                 : view === 'team'
                 ? `Clinic / ${clinician.clinicName ?? ''}`
                 : view === 'group-session'
@@ -276,6 +296,28 @@ function AppInner() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Subscription / trial badge — clickable → plans & usage */}
+            {subscription && view !== 'billing' && (
+              <button
+                onClick={handleOpenBilling}
+                title="Plans & usage"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
+                  subscription.status === 'active'
+                    ? 'bg-green-50 text-green-700 hover:bg-green-100'
+                    : subscription.status === 'trial'
+                    ? 'bg-accent/10 text-accent hover:bg-accent/20'
+                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                }`}
+              >
+                <Sparkles className="size-3" />
+                {subscription.status === 'active'
+                  ? `${subscription.planName ?? 'Plan'} · ${subscription.hoursBalance.toFixed(0)}h`
+                  : subscription.status === 'trial'
+                  ? `Free trial · ${subscription.trialDaysLeft ?? 0}d`
+                  : 'Upgrade'}
+              </button>
+            )}
+
             {/* Clinician name */}
             <span
               className="text-[11px] text-muted-foreground hidden sm:block"
@@ -382,6 +424,14 @@ function AppInner() {
         )}
         {view === 'how-it-works' && (
           <HowItWorks onBack={handleNewSession} />
+        )}
+        {view === 'billing' && subscription && (
+          <BillingView
+            subscription={subscription}
+            clinicianName={clinician.name}
+            onBack={handleNewSession}
+            onChanged={refreshSubscription}
+          />
         )}
         {view === 'appointment' && (
           appointmentLoading ? (
