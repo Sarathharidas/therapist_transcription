@@ -11,7 +11,8 @@ Phase 2 — deliberately not defined here yet.
 """
 
 import os
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Tuple
 
 TRIAL_DAYS = 14
 
@@ -56,6 +57,38 @@ def tier_for_plan_id(pid: str) -> Optional[str]:
         if plan_id(tier) == pid:
             return tier
     return None
+
+
+def entitlement(
+    status: Optional[str],
+    trial_ends_at: Optional[str],
+    seconds_balance: Optional[int],
+    now: datetime,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Can this clinician start a new (metered) session? Returns (allowed, reason).
+
+    - status None  → legacy account, grandfathered (allowed).
+    - trial        → allowed until trial_ends_at, else 'trial_expired'.
+    - active       → allowed while credit balance > 0, else 'no_hours'.
+    - anything else (past_due / cancelled / expired) → blocked with that reason.
+    """
+    if status is None:
+        return True, None
+    if status == "trial":
+        if trial_ends_at:
+            try:
+                end = datetime.fromisoformat(trial_ends_at)
+                if end.tzinfo is None:
+                    end = end.replace(tzinfo=timezone.utc)
+                if now < end:
+                    return True, None
+            except Exception:
+                return True, None  # lenient on a parse error — don't lock out
+        return False, "trial_expired"
+    if status == "active":
+        return (True, None) if (seconds_balance or 0) > 0 else (False, "no_hours")
+    return False, status or "inactive"
 
 
 def plan_seconds(tier: str) -> int:

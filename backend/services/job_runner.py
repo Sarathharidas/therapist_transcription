@@ -12,7 +12,7 @@ response has been sent to the client.
 import os
 import uuid
 
-from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant
+from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant, UsageRecord
 from backend.db.session import SessionLocal
 from backend.services.crypto import decrypt, encrypt
 from backend.services.gemini import get_service
@@ -102,6 +102,20 @@ def run_job(job_id: str) -> None:
         # Record who was present in this segment (the confidentiality access list)
         for pid in participant_ids:
             db.add(SummaryParticipant(summary_id=summary_row.summary_id, patient_id=pid))
+
+        # ── Meter usage: log the hours + deduct from an active subscriber's
+        #    carry-forward wallet. Trial users are gated by time, not credits, so
+        #    their balance is left untouched. Voice notes are never metered.
+        duration = service._get_duration(audio_path)
+        if clinician and duration:
+            secs = int(duration)
+            db.add(UsageRecord(
+                clinician_id=clinician.clinician_id,
+                seconds=secs,
+                kind=job.segment_type or "session",
+            ))
+            if clinician.subscription_status == "active":
+                clinician.seconds_balance = max(0, (clinician.seconds_balance or 0) - secs)
 
         job.status = "complete"
         job.summary_id = summary_row.summary_id

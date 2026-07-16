@@ -68,6 +68,12 @@ export function SessionView({ patient, onBack, onProcessingStarted }: Props) {
           ? 'Gemini API quota exceeded. Please enable billing or wait for daily reset.'
           : msg === 'upload_failed'
           ? 'Upload failed — but your recording is safe. Check your connection and tap Retry.'
+          : msg === 'trial_expired'
+          ? 'Your free trial has ended — subscribe from “Plans & usage” to keep recording.'
+          : msg === 'no_hours'
+          ? 'You’re out of hours for this cycle — upgrade or wait for renewal in “Plans & usage”.'
+          : msg === 'past_due' || msg === 'cancelled'
+          ? 'Your subscription is inactive — reactivate it in “Plans & usage”.'
           : msg,
       );
       // Keep the recorded blob so the clinician can retry instead of losing it.

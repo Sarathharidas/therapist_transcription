@@ -14,7 +14,7 @@ import os
 import re
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
@@ -35,6 +35,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
+from backend.services import billing
 from backend.services.crypto import decrypt, encrypt
 from backend.services.gemini import get_service
 from backend.services.job_runner import run_job
@@ -303,6 +304,17 @@ async def submit_session(
 
     The client polls GET /job/{job_id} to track progress.
     """
+    # ── Entitlement gate: block a new session when the trial's over / out of
+    #    hours / payment failed. Legacy (NULL status) accounts are grandfathered.
+    allowed, reason = billing.entitlement(
+        clinician.subscription_status,
+        clinician.trial_ends_at,
+        clinician.seconds_balance,
+        datetime.now(tz=timezone.utc),
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail=reason or "subscription_required")
+
     # Early reject on Content-Length — avoids buffering huge bodies before checking
     content_length = request.headers.get("content-length")
     if content_length and content_length.isdigit() and int(content_length) > MAX_UPLOAD_BYTES:
