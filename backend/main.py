@@ -4,6 +4,7 @@ FastAPI app: API only. Frontend is deployed separately on Vercel.
 """
 
 import os
+import re
 import threading
 import time
 import webbrowser
@@ -72,7 +73,27 @@ print(
 )
 
 
-# ── Global error handler — ensures CORS headers appear on 500s ────────────
+# ── Global error handler ──────────────────────────────────────────────────
+# This handler runs OUTSIDE the CORSMiddleware, so its response would otherwise
+# lack CORS headers — making a backend 500 appear in the browser as a generic
+# "Failed to fetch" that hides the real error. We echo the CORS headers here so
+# the actual message reaches the client.
+def _cors_headers(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if not origin:
+        return {}
+    allowed = origin in ALLOWED_ORIGINS or (
+        _origin_regex is not None and re.fullmatch(_origin_regex, origin) is not None
+    )
+    if not allowed:
+        return {}
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Vary": "Origin",
+    }
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # Log the exception with type so we can diagnose in Railway logs
@@ -81,6 +102,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
+        headers=_cors_headers(request),
     )
 
 
