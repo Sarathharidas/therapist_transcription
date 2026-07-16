@@ -17,7 +17,6 @@ from backend.db import Clinician, Patient, Summary
 from backend.db.session import get_db
 from backend.services.auth import get_current_clinician
 from backend.services.crypto import decrypt, encrypt
-from backend.services.gemini import get_service
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -146,8 +145,6 @@ def patient_history(
         .order_by(Summary.created_at.desc())
         .all()
     )
-    if not summaries:
-        return PatientHistoryOut(overview=None, sessions=[])
 
     sessions_out = [
         HistorySessionOut(
@@ -158,20 +155,7 @@ def patient_history(
         for s in summaries
     ]
 
-    # Cache key: regenerate only when the set of sessions changes.
-    marker = f"{len(summaries)}:{summaries[0].summary_id}"
-    if patient.history_overview and patient.history_overview_marker == marker:
-        overview = decrypt(patient.history_overview)
-    else:
-        recent = [decrypt(s.ai_summary) or "" for s in summaries[:5]]
-        try:
-            overview = get_service().summarize_history(recent) or None
-        except Exception as exc:
-            print(f"[patients] history overview failed: {exc}")
-            overview = None
-        if overview:
-            patient.history_overview = encrypt(overview)
-            patient.history_overview_marker = marker
-            db.commit()
-
+    # Read-only + instant: the overview is precomputed after each session by the
+    # background job (services/history.py). No LLM call here.
+    overview = decrypt(patient.history_overview) if patient.history_overview else None
     return PatientHistoryOut(overview=overview, sessions=sessions_out)

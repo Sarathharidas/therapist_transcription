@@ -16,6 +16,7 @@ from backend.db import Clinician, Job, Patient, Summary, SummaryParticipant, Usa
 from backend.db.session import SessionLocal
 from backend.services.crypto import decrypt, encrypt
 from backend.services.gemini import get_service
+from backend.services.history import regenerate_patient_overview
 
 
 def _parse_participant_ids(raw):
@@ -126,6 +127,15 @@ def run_job(job_id: str) -> None:
         db.commit()
 
         print(f"[job_runner] {job_id} → complete  summary_id={summary_row.summary_id}")
+
+        # Regenerate the patient's running history overview (best-effort) so the
+        # next session's recording screen reads it instantly — no LLM on the read
+        # path. Failure here must not affect the (already-saved) session.
+        try:
+            regenerate_patient_overview(db, job.patient_id)
+        except Exception as exc:
+            db.rollback()
+            print(f"[job_runner] {job_id} history overview gen failed: {exc}")
 
     except Exception as exc:
         print(f"[job_runner] {job_id} → failed: {exc}")
