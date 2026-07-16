@@ -1,17 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Building2, Loader2 } from 'lucide-react';
 import { registerClinic } from '../api/auth';
-import { token } from '../api/base';
+import { authReference, reportAuthClientEvent, token } from '../api/base';
 import type { Clinician } from '../types';
 
 type Props = {
   credential: string;            // Google ID token captured at sign-in
+  attemptId: string;             // privacy-safe correlation ID for Railway logs
   adminEmail: string;            // for display
   onLogin: (clinician: Clinician) => void;
   onBack: () => void;
 };
 
-export function ClinicRegister({ credential, adminEmail, onLogin, onBack }: Props) {
+export function ClinicRegister({ credential, attemptId, adminEmail, onLogin, onBack }: Props) {
   const [clinicName, setClinicName] = useState('');
   const [count, setCount] = useState(1);
   const [emails, setEmails] = useState<string[]>(['']);
@@ -43,8 +44,16 @@ export function ClinicRegister({ credential, adminEmail, onLogin, onBack }: Prop
         credential,
         clinicName.trim(),
         emails.map((e) => e.trim()).filter(Boolean),
+        attemptId,
       );
-      token.set(data.accessToken);
+      try {
+        token.set(data.accessToken);
+      } catch {
+        reportAuthClientEvent('jwt_storage_failure', attemptId, { mode: 'clinic' });
+        throw new Error(
+          `Your browser blocked secure session storage. Reference: ${authReference(attemptId)}`,
+        );
+      }
       onLogin(data.clinician);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not register the clinic.');

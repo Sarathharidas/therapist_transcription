@@ -8,7 +8,7 @@ Auth routes
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,6 +20,14 @@ from backend.services.auth import (
     create_jwt,
     get_current_clinician,
     verify_google_token,
+)
+from backend.services.auth_logging import (
+    auth_event,
+    browser_family,
+    client_event_allowed,
+    normalize_attempt_id,
+    request_attempt_id,
+    request_origin,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -57,6 +65,38 @@ class LoginResponse(BaseModel):
 
 class AuthConfigOut(BaseModel):
     clinic_enabled: bool
+
+
+class AuthClientEventRequest(BaseModel):
+    attempt_id: str
+    event: str
+    mode: Optional[str] = None
+    status: Optional[int] = None
+
+
+_ALLOWED_CLIENT_EVENTS = {
+    "google_on_error",
+    "google_credential_missing",
+    "railway_network_failure",
+    "login_http_failure",
+    "login_response_invalid",
+    "jwt_storage_failure",
+    "post_login_unauthorized",
+}
+
+
+def _start_auth_attempt(request: Request, mode: str, event: str) -> str:
+    attempt_id = request_attempt_id(request)
+    request.state.auth_mode = mode
+    request.state.auth_stage = "google_verification"
+    auth_event(
+        event,
+        attempt_id,
+        mode=mode,
+        origin=request_origin(request),
+        browser=browser_family(request),
+    )
+    return attempt_id
 
 
 def _clinician_out(db: Session, clinician: Clinician) -> ClinicianOut:
@@ -99,8 +139,43 @@ def auth_config(db: Session = Depends(get_db)):
     return AuthConfigOut(clinic_enabled=has_clinic)
 
 
+@router.post("/client-event", status_code=204)
+def auth_client_event(body: AuthClientEventRequest, request: Request):
+    """Receive a schema-restricted, PHI-free browser authentication failure."""
+    attempt_id = normalize_attempt_id(body.attempt_id)
+    request.state.auth_attempt_id = attempt_id
+    request.state.auth_mode = body.mode if body.mode in {"individual", "clinic"} else None
+
+    # Silently discard excessive events so this public diagnostic endpoint
+    # cannot be used to flood Railway logs.
+    if not client_event_allowed(request):
+        request.state.auth_outcome = "client_event_rate_limited"
+        return Response(status_code=204)
+
+    if body.event not in _ALLOWED_CLIENT_EVENTS:
+        request.state.auth_outcome = "client_event_invalid"
+        raise HTTPException(status_code=422, detail="Invalid authentication event")
+
+    status = body.status if body.status is not None and 100 <= body.status <= 599 else None
+    auth_event(
+        "auth_client_failure",
+        attempt_id,
+        client_event=body.event,
+        mode=request.state.auth_mode,
+        status=status,
+        origin=request_origin(request),
+        browser=browser_family(request),
+    )
+    request.state.auth_outcome = "client_event_recorded"
+    return Response(status_code=204)
+
+
 @router.post("/login", response_model=LoginResponse)
-def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
+def google_login(
+    body: GoogleLoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Verify the Google credential and resolve the clinician for the chosen path.
 
@@ -111,7 +186,13 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
       - resolve the clinic by name; existing member → allow; invited email → admit;
         otherwise 403.
     """
-    claims = verify_google_token(body.credential)
+    mode = "clinic" if body.mode == "clinic" else "individual"
+    attempt_id = _start_auth_attempt(request, mode, "auth_login_started")
+    try:
+        claims = verify_google_token(body.credential, attempt_id=attempt_id)
+    except HTTPException:
+        request.state.auth_outcome = "google_verification_failed"
+        raise
 
     google_id: str = claims["sub"]
     email: str = claims.get("email", "")
@@ -119,6 +200,7 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
     email_lc = email.lower()
 
     # Find by google_id first, then fall back to email (handles existing rows)
+    request.state.auth_stage = "clinician_lookup"
     clinician = db.query(Clinician).filter(Clinician.google_id == google_id).first()
     if clinician is None:
         clinician = db.query(Clinician).filter(Clinician.email == email).first()
@@ -135,10 +217,14 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
                 if clinician.google_id is None:
                     clinician.google_id = google_id
                 clinician.name = name
+                request.state.auth_stage = "database_commit"
                 db.commit()
                 db.refresh(clinician)
+                request.state.auth_stage = "jwt_creation"
                 access_token = create_jwt(str(clinician.clinician_id))
+                request.state.auth_outcome = "clinic_member_success"
                 return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
+            request.state.auth_outcome = "clinic_name_mismatch"
             raise HTTPException(
                 status_code=403,
                 detail=f"Your account is part of {own.name if own else 'another clinic'}, "
@@ -150,6 +236,7 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
         #    later clinic invitation).
         clinic = _clinic_by_name(db, entered)
         if clinic is None:
+            request.state.auth_outcome = "clinic_not_found"
             raise HTTPException(
                 status_code=403,
                 detail="No clinic found with that name — check the name with your admin.",
@@ -164,6 +251,7 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
             .first()
         )
         if invite is None:
+            request.state.auth_outcome = "clinic_invite_missing"
             raise HTTPException(
                 status_code=403,
                 detail=f"No invitation found for {email} in {clinic.name} — ask your admin.",
@@ -186,11 +274,13 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
             db.flush()
         invite.status = "accepted"
         invite.accepted_at = datetime.now(tz=timezone.utc).isoformat()
+        request.state.auth_stage = "database_commit"
         db.commit()
         db.refresh(clinician)
-        print(f"[auth] {email} joined clinic {clinic.name}")
 
+        request.state.auth_stage = "jwt_creation"
         access_token = create_jwt(str(clinician.clinician_id))
+        request.state.auth_outcome = "clinic_join_success"
         return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
     # ── Individual path (UNCHANGED) ──────────────────────────────────────────
@@ -198,45 +288,60 @@ def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
         if clinician.google_id is None:
             clinician.google_id = google_id
         clinician.name = name
+        request.state.auth_stage = "database_commit"
         db.commit()
         db.refresh(clinician)
-        print(f"[auth] Clinician signed in: {clinician.name} <{clinician.email}>")
+        request.state.auth_stage = "jwt_creation"
         access_token = create_jwt(str(clinician.clinician_id))
+        request.state.auth_outcome = "individual_existing_success"
         return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
     new_clinician = Clinician(email=email, name=name, google_id=google_id)
     _start_trial(new_clinician)
     db.add(new_clinician)
     try:
+        request.state.auth_stage = "database_commit"
         db.commit()
         db.refresh(new_clinician)
         clinician = new_clinician
-        print(f"[auth] New clinician registered (solo): {name} <{email}>")
     except IntegrityError:
         db.rollback()
-        print(f"[auth] Race on first sign-in for {email} — re-querying")
+        request.state.auth_stage = "clinician_race_requery"
+        auth_event("auth_login_race_requery", attempt_id, mode=mode)
         clinician = (
             db.query(Clinician)
             .filter((Clinician.google_id == google_id) | (Clinician.email == email))
             .first()
         )
         if clinician is None:
+            request.state.auth_outcome = "database_race_recovery_failed"
             raise HTTPException(
                 status_code=500,
                 detail="Failed to create account — please try again",
             )
 
+    request.state.auth_stage = "jwt_creation"
     access_token = create_jwt(str(clinician.clinician_id))
+    request.state.auth_outcome = "individual_new_success"
     return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
 
 @router.post("/register-clinic", response_model=LoginResponse, status_code=201)
-def register_clinic(body: ClinicRegisterRequest, db: Session = Depends(get_db)):
+def register_clinic(
+    body: ClinicRegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Self-serve clinic creation. The Google user becomes the clinic admin and the
     provided teammate emails become pending invites. Returns a JWT (logged in).
     """
-    claims = verify_google_token(body.credential)
+    attempt_id = _start_auth_attempt(request, "clinic", "auth_clinic_registration_started")
+    try:
+        claims = verify_google_token(body.credential, attempt_id=attempt_id)
+    except HTTPException:
+        request.state.auth_outcome = "google_verification_failed"
+        raise
     google_id: str = claims["sub"]
     email: str = claims.get("email", "")
     name: str = claims.get("name", email)
@@ -244,17 +349,23 @@ def register_clinic(body: ClinicRegisterRequest, db: Session = Depends(get_db)):
 
     clinic_name = (body.clinic_name or "").strip()
     if not clinic_name:
+        request.state.auth_outcome = "clinic_name_missing"
         raise HTTPException(status_code=422, detail="Clinic name is required")
+    request.state.auth_stage = "clinic_lookup"
     if _clinic_by_name(db, clinic_name) is not None:
+        request.state.auth_outcome = "clinic_already_exists"
         raise HTTPException(status_code=409, detail="A clinic with that name already exists")
 
     # Resolve the registrant — promote a solo account or create a fresh admin
+    request.state.auth_stage = "clinician_lookup"
     clinician = db.query(Clinician).filter(Clinician.google_id == google_id).first()
     if clinician is None:
         clinician = db.query(Clinician).filter(Clinician.email == email).first()
     if clinician is not None and clinician.clinic_id is not None:
+        request.state.auth_outcome = "already_in_clinic"
         raise HTTPException(status_code=409, detail="You already belong to a clinic")
 
+    request.state.auth_stage = "database_write"
     clinic = Clinic(name=clinic_name)
     db.add(clinic)
     db.flush()  # assign clinic_id
@@ -286,11 +397,19 @@ def register_clinic(body: ClinicRegisterRequest, db: Session = Depends(get_db)):
             status="pending", invited_by=clinician.clinician_id,
         ))
 
+    request.state.auth_stage = "database_commit"
     db.commit()
     db.refresh(clinician)
-    print(f"[auth] Clinic registered: {clinic_name} by {email} ({len(seen)} invites)")
 
+    request.state.auth_stage = "jwt_creation"
     access_token = create_jwt(str(clinician.clinician_id))
+    request.state.auth_outcome = "clinic_registration_success"
+    auth_event(
+        "auth_clinic_registration_succeeded",
+        attempt_id,
+        invite_count=len(seen),
+        mode="clinic",
+    )
     return LoginResponse(access_token=access_token, clinician=_clinician_out(db, clinician))
 
 

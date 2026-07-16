@@ -29,6 +29,13 @@ from backend.routes.patients import router as patients_router  # noqa: E402
 from backend.routes.sessions import router as sessions_router  # noqa: E402
 from backend.routes.settings import router as settings_router  # noqa: E402
 from backend.routes.billing import router as billing_router    # noqa: E402
+from backend.services.auth_logging import (                    # noqa: E402
+    AUTH_ATTEMPT_HEADER,
+    auth_event,
+    browser_family,
+    request_attempt_id,
+    request_origin,
+)
 
 app = FastAPI(title="Aura Clinical API", version="2.0.0")
 
@@ -73,6 +80,86 @@ print(
 )
 
 
+# ── Authentication observability ─────────────────────────────────────────
+_AUTH_TRACE_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register-clinic",
+    "/api/auth/me",
+}
+
+
+def _default_auth_outcome(request: Request, status: int) -> str:
+    if request.method == "OPTIONS":
+        return "cors_preflight_allowed" if status < 400 else "cors_preflight_rejected"
+    if status == 401:
+        return "unauthorized"
+    if status == 403:
+        return "forbidden"
+    if status == 422:
+        return "request_validation_failed"
+    if status >= 500:
+        stage = getattr(request.state, "auth_stage", "request")
+        return f"{stage}_failed"
+    if status < 400:
+        return "success"
+    return f"http_{status}"
+
+
+@app.middleware("http")
+async def auth_observability(request: Request, call_next):
+    """Write PHI-free auth lifecycle records to Railway stdout."""
+    path = request.url.path
+    trace_auth_path = path in _AUTH_TRACE_PATHS
+    if trace_auth_path:
+        request_attempt_id(request)
+        request.state.auth_stage = "request"
+
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        if trace_auth_path:
+            auth_event(
+                "auth_request_completed",
+                request_attempt_id(request),
+                method=request.method,
+                path=path,
+                status=500,
+                outcome=f"{getattr(request.state, 'auth_stage', 'request')}_failed",
+                duration_ms=round((time.perf_counter() - started) * 1000),
+                mode=getattr(request.state, "auth_mode", None),
+                origin=request_origin(request),
+                browser=browser_family(request),
+                exception_type=type(exc).__name__,
+            )
+        raise
+
+    # Trace the three authentication lifecycle routes and every API 401. The
+    # latter catches a successful login followed by immediate session rejection.
+    should_log = trace_auth_path or (
+        path.startswith("/api/") and response.status_code == 401
+    )
+    if should_log:
+        attempt_id = request_attempt_id(request)
+        outcome = getattr(request.state, "auth_outcome", None) or _default_auth_outcome(
+            request, response.status_code
+        )
+        response.headers[AUTH_ATTEMPT_HEADER] = attempt_id
+        auth_event(
+            "auth_request_completed",
+            attempt_id,
+            method=request.method,
+            path=path,
+            status=response.status_code,
+            outcome=outcome,
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            mode=getattr(request.state, "auth_mode", None),
+            origin=request_origin(request),
+            browser=browser_family(request),
+        )
+    return response
+
+
 # ── Global error handler ──────────────────────────────────────────────────
 # This handler runs OUTSIDE the CORSMiddleware, so its response would otherwise
 # lack CORS headers — making a backend 500 appear in the browser as a generic
@@ -96,12 +183,23 @@ def _cors_headers(request: Request) -> dict:
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Log the exception with type so we can diagnose in Railway logs
-    print(f"[error] {request.method} {request.url.path} → "
-          f"{type(exc).__name__}: {exc}")
+    # Auth errors may contain identity data inside DB-driver exception strings.
+    # The structured auth log already records the safe stage + exception type.
+    is_auth_path = request.url.path.startswith("/api/auth/")
+    if is_auth_path:
+        print(
+            f"[error] {request.method} {request.url.path} → "
+            f"{type(exc).__name__}: details suppressed",
+            flush=True,
+        )
+    else:
+        print(f"[error] {request.method} {request.url.path} → "
+              f"{type(exc).__name__}: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
+        content={
+            "detail": "Authentication service error" if is_auth_path else str(exc)
+        },
         headers=_cors_headers(request),
     )
 

@@ -165,3 +165,93 @@ def test_login_rejects_invalid_google_credential(client):
         resp = client.post("/api/auth/login", json={"credential": "bad-token"})
 
     assert resp.status_code == 401
+
+
+# ── Authentication observability ─────────────────────────────────────────
+
+def test_login_echoes_attempt_id_and_logs_without_identity_data(client, capsys):
+    claims = _mock_google_claims(
+        sub="google-observed",
+        email="private-clinician@example.com",
+        name="Dr. Private",
+    )
+    attempt_id = "observability-test-1234"
+    with patch("backend.routes.auth.verify_google_token", return_value=claims):
+        resp = client.post(
+            f"/api/auth/login?auth_attempt_id={attempt_id}",
+            headers={"X-Auth-Attempt-ID": attempt_id},
+            json={"credential": "secret-google-credential"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.headers["X-Auth-Attempt-ID"] == attempt_id
+
+    output = capsys.readouterr().out
+    assert '"event":"auth_login_started"' in output
+    assert '"outcome":"individual_new_success"' in output
+    assert f'"attempt_id":"{attempt_id}"' in output
+    assert "private-clinician@example.com" not in output
+    assert "Dr. Private" not in output
+    assert "secret-google-credential" not in output
+
+
+def test_client_failure_event_is_logged_without_database_storage(client, capsys):
+    attempt_id = "browser-failure-test-1234"
+    resp = client.post(
+        f"/api/auth/client-event?auth_attempt_id={attempt_id}",
+        headers={"Origin": "http://localhost:5173"},
+        json={
+            "attempt_id": attempt_id,
+            "event": "google_credential_missing",
+            "mode": "individual",
+        },
+    )
+
+    assert resp.status_code == 204
+    output = capsys.readouterr().out
+    assert '"event":"auth_client_failure"' in output
+    assert '"client_event":"google_credential_missing"' in output
+    assert f'"attempt_id":"{attempt_id}"' in output
+
+
+def test_client_failure_event_rejects_unknown_category(client):
+    resp = client.post(
+        "/api/auth/client-event",
+        json={"attempt_id": "unknown-event-test", "event": "arbitrary_payload"},
+    )
+    assert resp.status_code == 422
+
+
+def test_cors_preflight_logs_same_query_attempt_id(client, capsys):
+    attempt_id = "cors-preflight-test-1234"
+    resp = client.options(
+        f"/api/auth/login?auth_attempt_id={attempt_id}",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-auth-attempt-id",
+        },
+    )
+
+    assert resp.status_code == 200
+    output = capsys.readouterr().out
+    assert '"outcome":"cors_preflight_allowed"' in output
+    assert f'"attempt_id":"{attempt_id}"' in output
+
+
+def test_rejected_cors_preflight_is_visible_in_auth_logs(client, capsys):
+    attempt_id = "cors-rejected-test-1234"
+    resp = client.options(
+        f"/api/auth/login?auth_attempt_id={attempt_id}",
+        headers={
+            "Origin": "https://unexpected.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-auth-attempt-id",
+        },
+    )
+
+    assert resp.status_code == 400
+    output = capsys.readouterr().out
+    assert '"outcome":"cors_preflight_rejected"' in output
+    assert '"origin":"https://unexpected.example"' in output
+    assert f'"attempt_id":"{attempt_id}"' in output

@@ -1,8 +1,13 @@
 import { useState } from 'react';
-import { GoogleLogin } from '@react-oauth/google';
+import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { Building2, ShieldCheck, User } from 'lucide-react';
 import { googleLogin, type LoginMode } from '../api/auth';
-import { token } from '../api/base';
+import {
+  authAttempt,
+  authReference,
+  reportAuthClientEvent,
+  token,
+} from '../api/base';
 import { ClinicRegister } from './ClinicRegister';
 import type { Clinician } from '../types';
 
@@ -31,20 +36,72 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
   const [clinicScreen, setClinicScreen] = useState<ClinicScreen>('choose');
   const [clinicName, setClinicName] = useState('');
   // When set, we move to the registration form (admin already Google-authed)
-  const [registerCredential, setRegisterCredential] = useState<string | null>(null);
+  const [registerCredential, setRegisterCredential] = useState<{
+    credential: string;
+    attemptId: string;
+  } | null>(null);
 
   // Individual sign-in (UNCHANGED behaviour) + clinic login both end here
-  const completeLogin = async (credential: string, m: LoginMode, name?: string) => {
+  const completeLogin = async (
+    credential: string,
+    m: LoginMode,
+    attemptId: string,
+    name?: string,
+  ) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await googleLogin(credential, m, name);
-      token.set(data.accessToken);
+      const data = await googleLogin(credential, m, name, attemptId);
+      try {
+        token.set(data.accessToken);
+      } catch {
+        reportAuthClientEvent('jwt_storage_failure', attemptId, { mode: m });
+        throw new Error(
+          `Your browser blocked secure session storage. Reference: ${authReference(attemptId)}`,
+        );
+      }
       onLogin(data.clinician);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');
       setLoading(false);
     }
+  };
+
+  const startAttempt = () => {
+    const attemptId = authAttempt.create();
+    authAttempt.set(attemptId);
+    return attemptId;
+  };
+
+  const handleGoogleError = (m: LoginMode) => {
+    const attemptId = startAttempt();
+    reportAuthClientEvent('google_on_error', attemptId, { mode: m });
+    setLoading(false);
+    setError(`Google sign-in failed. Please try again. Reference: ${authReference(attemptId)}`);
+  };
+
+  const handleGoogleSuccess = (
+    response: CredentialResponse,
+    m: LoginMode,
+    name?: string,
+  ) => {
+    const attemptId = startAttempt();
+    if (!response.credential) {
+      reportAuthClientEvent('google_credential_missing', attemptId, { mode: m });
+      setError(`Google did not return a sign-in credential. Reference: ${authReference(attemptId)}`);
+      return;
+    }
+    void completeLogin(response.credential, m, attemptId, name);
+  };
+
+  const handleRegisterGoogleSuccess = (response: CredentialResponse) => {
+    const attemptId = startAttempt();
+    if (!response.credential) {
+      reportAuthClientEvent('google_credential_missing', attemptId, { mode: 'clinic' });
+      setError(`Google did not return a sign-in credential. Reference: ${authReference(attemptId)}`);
+      return;
+    }
+    setRegisterCredential({ credential: response.credential, attemptId });
   };
 
   const setPath = (m: LoginMode) => {
@@ -57,8 +114,9 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
   if (registerCredential) {
     return (
       <ClinicRegister
-        credential={registerCredential}
-        adminEmail={emailFromCredential(registerCredential)}
+        credential={registerCredential.credential}
+        attemptId={registerCredential.attemptId}
+        adminEmail={emailFromCredential(registerCredential.credential)}
         onLogin={onLogin}
         onBack={() => { setRegisterCredential(null); setError(null); }}
       />
@@ -120,8 +178,8 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
               {loading ? spinner : (
                 <div className="flex justify-center">
                   <GoogleLogin
-                    onSuccess={(r) => r.credential && completeLogin(r.credential, 'individual')}
-                    onError={() => setError('Google sign-in failed. Please try again.')}
+                    onSuccess={(r) => handleGoogleSuccess(r, 'individual')}
+                    onError={() => handleGoogleError('individual')}
                     theme="outline" size="large" shape="rectangular" text="signin_with"
                   />
                 </div>
@@ -160,8 +218,8 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
               </p>
               <div className="flex justify-center">
                 <GoogleLogin
-                  onSuccess={(r) => r.credential && setRegisterCredential(r.credential)}
-                  onError={() => setError('Google sign-in failed. Please try again.')}
+                  onSuccess={handleRegisterGoogleSuccess}
+                  onError={() => handleGoogleError('clinic')}
                   theme="outline" size="large" shape="rectangular" text="continue_with"
                 />
               </div>
@@ -190,8 +248,8 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
               {loading ? spinner : (
                 <div className={`flex justify-center ${clinicName.trim() ? '' : 'opacity-40 pointer-events-none'}`}>
                   <GoogleLogin
-                    onSuccess={(r) => r.credential && completeLogin(r.credential, 'clinic', clinicName.trim())}
-                    onError={() => setError('Google sign-in failed. Please try again.')}
+                    onSuccess={(r) => handleGoogleSuccess(r, 'clinic', clinicName.trim())}
+                    onError={() => handleGoogleError('clinic')}
                     theme="outline" size="large" shape="rectangular" text="signin_with"
                   />
                 </div>
