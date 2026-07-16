@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from backend.db import Clinician, UsageRecord
+from backend.db import Clinician, CreditTransaction, UsageRecord
 from backend.db.session import get_db
 from backend.services import billing
 from backend.services.auth import get_current_clinician
@@ -117,6 +117,37 @@ def get_subscription(
     )
 
 
+class HistoryItem(BaseModel):
+    type: str      # 'credit' | 'usage'
+    hours: float   # positive magnitude; `type` gives the direction
+    at: str
+
+
+@router.get("/history", response_model=List[HistoryItem])
+def history(
+    db: Session = Depends(get_db),
+    clinician: Clinician = Depends(get_current_clinician),
+):
+    """Recent credit top-ups + usage, newest first (for the dashboard)."""
+    credits = (
+        db.query(CreditTransaction)
+        .filter(CreditTransaction.clinician_id == clinician.clinician_id)
+        .order_by(CreditTransaction.created_at.desc()).limit(20).all()
+    )
+    usage = (
+        db.query(UsageRecord)
+        .filter(UsageRecord.clinician_id == clinician.clinician_id)
+        .order_by(UsageRecord.created_at.desc()).limit(20).all()
+    )
+    items = [
+        {"type": "credit", "hours": float(c.hours or 0), "at": c.created_at} for c in credits
+    ] + [
+        {"type": "usage", "hours": round((u.seconds or 0) / 3600, 2), "at": u.created_at} for u in usage
+    ]
+    items.sort(key=lambda x: x["at"] or "", reverse=True)
+    return [HistoryItem(**i) for i in items[:20]]
+
+
 def _razorpay_client():
     key_id = os.getenv("RAZORPAY_KEY_ID")
     key_secret = os.getenv("RAZORPAY_KEY_SECRET")
@@ -187,7 +218,8 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
 
     event = json.loads(raw)
     etype = event.get("event", "")
-    entity = (event.get("payload", {}).get("subscription", {}) or {}).get("entity", {})
+    payload = event.get("payload", {})
+    entity = (payload.get("subscription", {}) or {}).get("entity", {})
     sub_id = entity.get("id")
     if not sub_id:
         return {"ok": True}
@@ -199,17 +231,34 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         return {"ok": True}  # unknown subscription — ignore
 
     if etype == "subscription.charged":
-        # Successful payment (incl. the first) → top up the wallet + go active.
         clinician.subscription_status = "active"
-        if clinician.plan:
+        current_end = entity.get("current_end")
+        period_end_iso = (
+            datetime.fromtimestamp(current_end, tz=timezone.utc).isoformat()
+            if current_end else None
+        )
+        if period_end_iso:
+            clinician.current_period_end = period_end_iso
+
+        # Idempotency: Razorpay may retry webhooks. Credit the wallet + record the
+        # purchase only once per payment id.
+        payment_id = ((payload.get("payment", {}) or {}).get("entity", {}) or {}).get("id")
+        dedupe_id = payment_id or f"{sub_id}:{current_end}"
+        already = (
+            db.query(CreditTransaction)
+            .filter(CreditTransaction.razorpay_payment_id == dedupe_id)
+            .first()
+        )
+        if not already and clinician.plan:
             clinician.seconds_balance = billing.apply_renewal(
                 clinician.seconds_balance or 0, clinician.plan
             )
-        current_end = entity.get("current_end")
-        if current_end:
-            clinician.current_period_end = datetime.fromtimestamp(
-                current_end, tz=timezone.utc
-            ).isoformat()
+            db.add(CreditTransaction(
+                clinician_id=clinician.clinician_id,
+                hours=billing.PLANS[clinician.plan]["hours"],
+                razorpay_payment_id=dedupe_id,
+                period_end=period_end_iso,
+            ))
     elif etype == "subscription.activated":
         clinician.subscription_status = "active"
     elif etype in ("subscription.halted", "subscription.pending"):

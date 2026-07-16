@@ -132,6 +132,27 @@ class UsageRecord(Base):
     created_at = Column(Text, nullable=False, server_default=text("now()"))
 
 
+class CreditTransaction(Base):
+    """One row per credit top-up (subscription charge). Records purchases for the
+    dashboard + audit, and doubles as webhook idempotency (unique payment id)."""
+    __tablename__ = "credit_transactions"
+
+    txn_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    clinician_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinicians.clinician_id"),
+        nullable=False,
+    )
+    hours = Column(Integer, nullable=False)              # hours added this charge
+    razorpay_payment_id = Column(Text, unique=True, nullable=True)
+    period_end = Column(Text, nullable=True)             # ISO ts of the cycle end
+    created_at = Column(Text, nullable=False, server_default=text("now()"))
+
+
 class Patient(Base):
     __tablename__ = "patients"
 

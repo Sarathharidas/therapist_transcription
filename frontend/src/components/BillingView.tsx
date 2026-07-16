@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { ArrowLeft, Check, Clock, Loader2, Sparkles } from 'lucide-react';
-import { loadRazorpay, subscribe, type Subscription } from '../api/billing';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Check, Clock, Loader2, Minus, Plus, Sparkles } from 'lucide-react';
+import { getHistory, loadRazorpay, subscribe, type HistoryItem, type Subscription } from '../api/billing';
 
 type Props = {
   subscription: Subscription;
@@ -16,6 +16,11 @@ type Props = {
 export function BillingView({ subscription: sub, clinicianName, onBack, onChanged }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  useEffect(() => {
+    getHistory().then(setHistory).catch(() => setHistory([]));
+  }, [sub.hoursBalance, sub.status]);
 
   const handleSubscribe = async (tier: string) => {
     setBusy(tier);
@@ -141,6 +146,31 @@ export function BillingView({ subscription: sub, clinicianName, onBack, onChange
             );
           })}
         </div>
+
+        {/* Recent activity — credit top-ups + session usage */}
+        {history.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-lg font-semibold mb-3">Recent activity</h2>
+            <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+              {history.map((h, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-2.5 bg-card text-sm">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`size-6 rounded-full flex items-center justify-center ${h.type === 'credit' ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'}`}>
+                      {h.type === 'credit' ? <Plus className="size-3.5" /> : <Minus className="size-3.5" />}
+                    </span>
+                    <span>{h.type === 'credit' ? 'Credit added' : 'Session'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`font-medium tabular-nums ${h.type === 'credit' ? 'text-green-700' : 'text-foreground'}`}>
+                      {h.type === 'credit' ? '+' : '−'}{h.hours}h
+                    </span>
+                    <span className="text-xs text-muted-foreground">{h.at.slice(0, 10)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

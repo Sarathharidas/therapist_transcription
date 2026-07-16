@@ -41,6 +41,14 @@ export async function getSubscription(): Promise<Subscription> {
   };
 }
 
+export type HistoryItem = { type: 'credit' | 'usage'; hours: number; at: string };
+
+export async function getHistory(): Promise<HistoryItem[]> {
+  const resp = await withNetworkRetry(() => fetchWithAuth('/api/billing/history'));
+  if (!resp.ok) return [];
+  return (await resp.json()) as HistoryItem[];
+}
+
 export async function subscribe(tier: string): Promise<{ subscriptionId: string; keyId: string }> {
   const resp = await fetchWithAuth('/api/billing/subscribe', {
     method: 'POST',

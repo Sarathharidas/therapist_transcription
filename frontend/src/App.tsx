@@ -46,20 +46,31 @@ function AppInner() {
   const [formatOpen, setFormatOpen] = useState(false);
   // "How it works" page shown pre-login (post-login it's a normal view)
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+
+  // Sidebar refresh + active highlight
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [activeSummaryId, setActiveSummaryId] = useState<string | undefined>();
+
   // Subscription/trial status (drives the top-bar badge + billing view)
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   const refreshSubscription = () => {
     getSubscription().then(setSubscription).catch(() => setSubscription(null));
   };
-  // Load subscription once authenticated (also lazily starts the trial server-side).
+  // Load subscription on login (also lazily starts the trial) + poll every 45s so
+  // the hours badge stays fresh as sessions are used and on renewal.
+  useEffect(() => {
+    if (!clinician) return;
+    refreshSubscription();
+    const id = setInterval(refreshSubscription, 45000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinician]);
+  // Also refetch right after a session is submitted/finished (sidebar refresh signal).
   useEffect(() => {
     if (clinician) refreshSubscription();
-  }, [clinician]);
-
-  // Sidebar refresh + active highlight
-  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
-  const [activeSummaryId, setActiveSummaryId] = useState<string | undefined>();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarRefreshKey]);
 
   // Transient "processing in background" notice shown after a recording is submitted
   const [processingNotice, setProcessingNotice] = useState<string | null>(null);
