@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronRight, History, Mic, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Mic, RefreshCw } from 'lucide-react';
 import { useRecorder } from '../hooks/useRecorder';
 import { submitSession } from '../api/sessions';
 import { getPatientHistory, type PatientHistory } from '../api/patients';
+import { PreviousSessions } from './PreviousSessions';
 import type { Patient, SessionPhase } from '../types';
 
 type Props = {
@@ -223,40 +224,6 @@ export function SessionView({ patient, onBack, onProcessingStarted, onOpenSessio
   );
 }
 
-function PreviousSessions({ history, onOpen }: { history: PatientHistory; onOpen: (id: string) => void }) {
-  return (
-    <div>
-      <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)' }}>
-        <History className="size-3" /> Previous sessions
-      </p>
-
-      {history.overview && (
-        <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl mb-5">
-          <p className="text-[11px] uppercase tracking-widest text-accent mb-2" style={{ fontFamily: 'var(--font-mono)' }}>
-            History overview
-          </p>
-          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{history.overview}</p>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {history.sessions.map((s) => (
-          <button
-            key={s.summaryId}
-            onClick={() => onOpen(s.summaryId)}
-            className="w-full text-left flex items-center justify-between gap-3 p-3 bg-card border border-border rounded-xl hover:bg-secondary/40 transition-colors"
-          >
-            <div className="min-w-0">
-              <div className="text-[11px] text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>{s.date}</div>
-              <div className="text-sm truncate text-foreground/90">{s.snippet || 'Session summary'}</div>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground shrink-0" />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function FailedView({
   patientName, onRetry, onDiscard,

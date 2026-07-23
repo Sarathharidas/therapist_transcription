@@ -482,6 +482,7 @@ function AppInner() {
               patientName={pastSession.patient_name}
               initialNotes={pastSession.clinician_notes ?? ''}
               dateLabel={pastSession.date}
+              onOpenSession={handleOpenSummary}
             />
           ) : null
         )}

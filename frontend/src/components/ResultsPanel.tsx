@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, Loader2, Mic, Square } from 'lucide-react';
 import { saveNotes, transcribeNote } from '../api/sessions';
+import { getPatientHistory, type PatientHistory } from '../api/patients';
 import { useRecorder } from '../hooks/useRecorder';
 import { EditableSummary } from './EditableSummary';
+import { PreviousSessions } from './PreviousSessions';
+import { History } from 'lucide-react';
 import type { SessionResult } from '../types';
 
 type Props = {
@@ -11,6 +14,8 @@ type Props = {
   patientName: string;
   initialNotes?: string;
   dateLabel?: string;
+  // Open another of this patient's past sessions (enables the history bar).
+  onOpenSession?: (summaryId: string) => void;
 };
 
 function CopyButton({ text }: { text: string }) {
@@ -55,13 +60,25 @@ function formatDuration(seconds: number): string {
 // Which section is currently expanded to fill the space
 type Focus = 'both' | 'transcript' | 'summary';
 
-export function ResultsPanel({ result, durationSeconds, patientName, initialNotes = '', dateLabel }: Props) {
+export function ResultsPanel({ result, durationSeconds, patientName, initialNotes = '', dateLabel, onOpenSession }: Props) {
   const [summary, setSummary] = useState(result.summary);
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [focus, setFocus] = useState<Focus>('both');
+
+  // This patient's other sessions (shown in a collapsible bar when reopened).
+  const [history, setHistory] = useState<PatientHistory | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  useEffect(() => {
+    if (!onOpenSession || !result.patient_id) return;
+    let alive = true;
+    getPatientHistory(result.patient_id).then((h) => alive && setHistory(h)).catch(() => {});
+    return () => { alive = false; };
+  }, [onOpenSession, result.patient_id]);
+  const otherSessions =
+    history?.sessions.filter((s) => s.summaryId !== result.summary_id) ?? [];
 
   // Voice-note dictation → transcribed English text appended to the notes box.
   const { state: recState, blob: recBlob, start: startRec, stop: stopRec, reset: resetRec } = useRecorder();
@@ -128,7 +145,37 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
   const summaryVisible = focus !== 'transcript';
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+
+      {/* ── Previous sessions — collapsible bar (only when reopened) ── */}
+      {onOpenSession && otherSessions.length > 0 && (
+        <div className="shrink-0 border-b border-border bg-card/40">
+          <button
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-5 sm:px-8 lg:px-12 py-2.5 hover:bg-secondary/30 transition-colors"
+          >
+            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
+              <History className="size-3" /> Previous sessions · {otherSessions.length}
+            </span>
+            {historyOpen
+              ? <ChevronDown className="size-3.5 text-muted-foreground" />
+              : <ChevronRight className="size-3.5 text-muted-foreground" />}
+          </button>
+          {historyOpen && history && (
+            <div className="px-5 sm:px-8 lg:px-12 pb-4 max-h-[40vh] overflow-y-auto">
+              <PreviousSessions
+                history={history}
+                onOpen={onOpenSession}
+                excludeSummaryId={result.summary_id}
+                showHeader={false}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Split view: transcript | summary + notes */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
 
       {/* ══════════════════════════════
           TRANSCRIPT
@@ -282,6 +329,7 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
           </div>
         </div>
 
+      </div>
       </div>
     </div>
   );
