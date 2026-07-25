@@ -64,7 +64,6 @@ Rules:
 # "Not discussed". Keep this as a pure Markdown skeleton — the clinical
 # instructions live in SUMMARY_INSTRUCTIONS below, not here.
 DEFAULT_SUMMARY_FORMAT = """# OP CASE SHEET
-**MINDWORLD — Mental Health Clinic and Training Centre**
 
 > Template for psychiatric outpatient case documentation / therapy notes.
 > Fields marked with `____` are to be filled in. Option lists separated by `/` indicate

@@ -126,7 +126,7 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
       <div className="p-6 border-t border-border">
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <Lock className="size-3.5" />
-          <span>HIPAA Encrypted</span>
+          <span>Encrypted</span>
         </div>
       </div>
     </aside>
