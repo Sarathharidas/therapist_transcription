@@ -149,9 +149,7 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
       <div className="w-full max-w-sm">
         {/* Brand */}
         <div className="text-center mb-10">
-          <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-3" style={{ fontFamily: 'var(--font-mono)' }}>
-            Aura Clinical
-          </p>
+          <img src="/kaaz-wordmark.jpg" alt="kaaz.ai" className="h-8 object-contain mx-auto mb-4" />
           <h1 className="text-4xl leading-tight mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
             Welcome back.
           </h1>

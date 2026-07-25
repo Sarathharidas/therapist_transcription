@@ -33,7 +33,7 @@ export function BillingView({ subscription: sub, clinicianName, onBack, onChange
       const rzp = new Razorpay({
         key: keyId,
         subscription_id: subscriptionId,
-        name: 'Aura Clinical',
+        name: 'kaaz.ai',
         description: sub.plans.find((p) => p.tier === tier)?.name ?? 'Subscription',
         prefill: { name: clinicianName },
         theme: { color: '#7c5cff' },

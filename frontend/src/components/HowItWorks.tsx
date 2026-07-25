@@ -34,7 +34,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-12">
           The conversation between you and your client is the most sensitive thing there is.
-          So Aura is built around a simple promise: the recording is never kept. Here's exactly
+          So kaaz.ai is built around a simple promise: the recording is never kept. Here's exactly
           how every session is protected.
         </p>
 
@@ -46,7 +46,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
           <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-border bg-card shadow-sm">
             <iframe
               src="https://www.loom.com/embed/ec845fdb182b4461aa81443287b9621e"
-              title="How Aura protects your privacy"
+              title="How kaaz.ai protects your privacy"
               allowFullScreen
               className="absolute inset-0 w-full h-full"
             />
@@ -158,7 +158,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
         {/* ── Close ── */}
         <div className="p-6 sm:p-8 bg-secondary/40 border border-border rounded-2xl text-center">
           <p className="text-base sm:text-lg text-foreground/90 leading-relaxed mb-5" style={{ fontFamily: 'var(--font-serif)' }}>
-            Privacy isn't a setting you switch on. It's how Aura is built — so you can focus on
+            Privacy isn't a setting you switch on. It's how kaaz.ai is built — so you can focus on
             your client, not on what happens to their words.
           </p>
           <button

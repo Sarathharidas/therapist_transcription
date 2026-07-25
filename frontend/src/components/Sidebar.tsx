@@ -67,13 +67,7 @@ export function Sidebar({ clinician, onNewSession, onSelectSession, activeSummar
           onClick={onNewSession}
           className="flex items-center gap-3 hover:opacity-70 transition-opacity"
         >
-          <img src="/aura-logo.png" alt="Aura Clinical" className="size-8 rounded-lg object-contain" />
-          <span
-            className="text-2xl italic"
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
-            Aura Clinical
-          </span>
+          <img src="/kaaz-wordmark.jpg" alt="kaaz.ai" className="h-7 object-contain" />
         </button>
 
         {/* Close button — only shown when rendered as mobile drawer */}
