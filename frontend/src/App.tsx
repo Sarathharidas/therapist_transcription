@@ -292,6 +292,15 @@ function AppInner() {
               <Menu className="size-4" />
             </button>
 
+            {/* Logo — top-left; click returns home */}
+            <button
+              onClick={handleNewSession}
+              className="shrink-0 hover:opacity-70 transition-opacity"
+              aria-label="Home"
+            >
+              <img src="/kaaz-logo.jpg" alt="kaaz.ai" className="size-7 rounded-md object-contain" />
+            </button>
+
             <div
               className="text-[11px] uppercase tracking-widest text-muted-foreground truncate"
               style={{ fontFamily: 'var(--font-mono)' }}
