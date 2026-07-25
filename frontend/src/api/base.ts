@@ -131,15 +131,52 @@ export async function withNetworkRetry<T>(fn: () => Promise<T>, retries = 2): Pr
   }
 }
 
+// Set just before bouncing to login on an expired/rejected token, so the login
+// screen can show a friendly "your session ended" notice instead of nothing.
+const SESSION_EXPIRED_KEY = 'aura_session_expired';
+export function consumeSessionExpired(): boolean {
+  try {
+    if (sessionStorage.getItem(SESSION_EXPIRED_KEY)) {
+      sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+      return true;
+    }
+  } catch {
+    // storage disabled — no notice, not fatal
+  }
+  return false;
+}
+
+/**
+ * True when running inside an app's embedded browser (Google app, Facebook,
+ * Instagram, etc.) rather than standalone Safari/Chrome. These webviews often
+ * don't persist localStorage and block Google Sign-In, so the JWT is never
+ * stored/sent → every authenticated request 401s. We warn the user to open in a
+ * real browser. Keyed off explicit in-app tokens to avoid false positives.
+ */
+export function isInAppBrowser(): boolean {
+  const ua = navigator.userAgent || '';
+  return /GSA\/|FBAN|FBAV|FB_IAB|Instagram|Line\/|Twitter|WhatsApp|Snapchat|MicroMessenger/i.test(ua);
+}
+
 // Authenticated fetch — adds Authorization header and handles 401 globally
 export async function fetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
   const t = token.get();
-  const attemptId = t ? authAttempt.ensure() : authAttempt.get();
+
+  // No token → don't hit the backend at all. Prevents stray token-less requests
+  // (e.g. background polls that fire during/after logout) from emitting 401s.
+  if (!t) {
+    return new Response(JSON.stringify({ detail: 'Not authenticated' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const attemptId = authAttempt.ensure();
   const resp = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       ...init?.headers,
-      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+      Authorization: `Bearer ${t}`,
       ...(attemptId ? { 'X-Auth-Attempt-ID': attemptId } : {}),
     },
   });
@@ -148,6 +185,7 @@ export async function fetchWithAuth(path: string, init?: RequestInit): Promise<R
     if (attemptId) {
       reportAuthClientEvent('post_login_unauthorized', attemptId, { status: 401, path });
     }
+    try { sessionStorage.setItem(SESSION_EXPIRED_KEY, '1'); } catch { /* storage off */ }
     token.clear();
     window.location.href = '/';
   }

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
-import { Building2, ShieldCheck, User } from 'lucide-react';
+import { AlertTriangle, Building2, ShieldCheck, User } from 'lucide-react';
 import { googleLogin, type LoginMode } from '../api/auth';
 import {
   authAttempt,
   authReference,
+  consumeSessionExpired,
+  isInAppBrowser,
   reportAuthClientEvent,
   token,
 } from '../api/base';
@@ -34,6 +36,10 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<LoginMode>('individual');
   const [clinicScreen, setClinicScreen] = useState<ClinicScreen>('choose');
+  // In-app browser (Google app / FB / Instagram webview) → sign-in won't persist.
+  const [inApp] = useState(() => isInAppBrowser());
+  // Show a friendly notice if we were bounced here by an expired session.
+  const [sessionExpired] = useState(() => consumeSessionExpired());
   const [clinicName, setClinicName] = useState('');
   // When set, we move to the registration form (admin already Google-authed)
   const [registerCredential, setRegisterCredential] = useState<{
@@ -159,6 +165,25 @@ export function LoginPage({ onLogin, onHowItWorks }: Props) {
               : 'Sign in to access your sessions and patients.'}
           </p>
         </div>
+
+        {/* In-app browser warning — sign-in can't persist in embedded webviews */}
+        {inApp && (
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5">
+            <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 leading-relaxed">
+              You’re viewing kaaz.ai inside another app’s browser, where sign-in can’t be saved.
+              Please open <strong>kaaz.ai in Safari or Chrome</strong> — tap the menu (•••) and choose
+              “Open in Browser”.
+            </p>
+          </div>
+        )}
+
+        {/* Session-expired notice (bounced here from an expired token) */}
+        {sessionExpired && !inApp && (
+          <div className="mb-4 p-3 bg-secondary/60 border border-border rounded-xl text-xs text-muted-foreground text-center">
+            Your session ended — please sign in again to continue.
+          </div>
+        )}
 
         <div className="bg-card border border-border rounded-2xl shadow-sm p-8">
           {/* Path selector — always available */}
