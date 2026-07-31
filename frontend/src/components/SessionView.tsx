@@ -79,9 +79,9 @@ export function SessionView({ patient, onBack, onProcessingStarted, onOpenSessio
         msg === 'quota_exceeded'
           ? 'Gemini API quota exceeded. Please enable billing or wait for daily reset.'
           : msg === 'upload_failed'
-          ? 'Upload failed — but your recording is safe. Check your connection and tap Retry.'
+          ? 'Upload failed — but your session is safe. Check your connection and tap Retry.'
           : msg === 'trial_expired'
-          ? 'Your free trial has ended — subscribe from “Plans & usage” to keep recording.'
+          ? 'Your free trial has ended — subscribe from “Plans & usage” to keep transcribing sessions.'
           : msg === 'no_hours'
           ? 'You’re out of hours for this cycle — upgrade or wait for renewal in “Plans & usage”.'
           : msg === 'past_due' || msg === 'cancelled'
@@ -212,7 +212,7 @@ export function SessionView({ patient, onBack, onProcessingStarted, onOpenSessio
               >
                 <Mic className="size-7 sm:size-8 text-accent" />
               </button>
-              <p className="text-sm text-muted-foreground">Tap to start recording with {patient.name}.</p>
+              <p className="text-sm text-muted-foreground">Tap to start transcribing with {patient.name}.</p>
             </div>
             <PreviousSessions history={history!} onOpen={onOpenSession} />
           </div>
@@ -236,7 +236,7 @@ function FailedView({
         </div>
         <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>Upload didn't go through</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          {patientName}'s recording is still here — it wasn't lost. See the message above, then try again.
+          {patientName}'s session is still here — it wasn't lost. See the message above, then try again.
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
@@ -275,12 +275,12 @@ function RecordingIdleView({
           <Mic className={`size-8 sm:size-10 relative ${phase === 'recording' ? 'text-red-500' : 'text-accent'}`} />
         </button>
         <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: 'var(--font-serif)' }}>
-          {phase === 'recording' ? 'Listening…' : 'Ready when you are'}
+          {phase === 'recording' ? 'Transcribing…' : 'Ready when you are'}
         </h2>
         <p className="text-muted-foreground text-sm sm:text-base px-4">
           {phase === 'recording'
-            ? 'Speak naturally. The session is being recorded privately.'
-            : `Tap the microphone to start recording with ${patientName}.`}
+            ? 'Speak naturally. The session is being transcribed privately.'
+            : `Tap the microphone to start transcribing with ${patientName}.`}
         </p>
       </div>
     </div>
@@ -295,7 +295,7 @@ function SubmittingView({ patientName }: { patientName: string }) {
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>Saving recording…</h2>
+        <h2 className="text-2xl mb-2" style={{ fontFamily: 'var(--font-serif)' }}>Saving transcript…</h2>
         <p className="text-sm text-muted-foreground">
           Securing {patientName}'s session. This only takes a moment.
         </p>

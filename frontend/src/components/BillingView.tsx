@@ -85,7 +85,7 @@ export function BillingView({ subscription: sub, clinicianName, onBack, onChange
           <p className="text-sm font-semibold">
             {sub.status === 'past_due' ? 'Payment overdue' : sub.status === 'cancelled' ? 'Subscription cancelled' : 'No active plan'}
           </p>
-          <p className="text-xs text-muted-foreground">Choose a plan below to keep recording sessions.</p>
+          <p className="text-xs text-muted-foreground">Choose a plan below to keep transcribing sessions.</p>
         </div>
       </div>
     );

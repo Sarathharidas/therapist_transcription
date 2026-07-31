@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </h1>
           <p className="text-sm text-muted-foreground mb-6">
             The app hit an unexpected error. Please reload the page.
-            Your data is safe — recorded sessions are saved to the server.
+            Your data is safe — transcribed sessions are saved to the server.
           </p>
           <details className="mb-6 text-left">
             <summary className="text-xs text-muted-foreground cursor-pointer mb-2">

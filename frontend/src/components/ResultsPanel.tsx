@@ -209,7 +209,7 @@ export function ResultsPanel({ result, durationSeconds, patientName, initialNote
                   {dateLabel
                     ? dateLabel
                     : durationSeconds !== undefined
-                    ? `Recorded today · ${formatDuration(durationSeconds)}`
+                    ? `Transcribed today · ${formatDuration(durationSeconds)}`
                     : 'Past session'}
                 </p>
               </div>

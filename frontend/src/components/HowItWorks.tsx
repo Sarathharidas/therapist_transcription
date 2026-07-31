@@ -34,7 +34,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-12">
           The conversation between you and your client is the most sensitive thing there is.
-          So kaaz.ai is built around a simple promise: the recording is never kept. Here's exactly
+          So kaaz.ai is built around a simple promise: the audio is never kept. Here's exactly
           how every session is protected.
         </p>
 
@@ -72,9 +72,9 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
                 We never keep your audio.
               </h2>
               <p className="text-sm sm:text-[15px] text-foreground/80 leading-relaxed">
-                The moment your words become a transcript, the recording is permanently and
+                The moment your words become a transcript, the audio is permanently and
                 irreversibly deleted — not archived on your device, not saved on our servers,
-                not stored anywhere. There is no recording to leak, to lose, or to be handed
+                not stored anywhere. There is no audio to leak, to lose, or to be handed
                 over. It simply stops existing.
               </p>
             </div>
@@ -87,9 +87,9 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
         </h2>
         <ol className="space-y-4 mb-14">
           {[
-            { icon: Mic, title: 'You speak', body: 'Audio is captured live in your browser — only while you’re recording, and only to be turned into text.' },
+            { icon: Mic, title: 'You speak', body: 'Audio is captured live in your browser — only during the session, and only to be turned into text.' },
             { icon: FileText, title: 'It becomes text', body: 'Your session is transcribed and distilled into clear clinical notes.' },
-            { icon: Trash2, title: 'The audio is destroyed', body: 'The instant the transcript exists, the recording is permanently deleted. This step is not optional and cannot be turned off.' },
+            { icon: Trash2, title: 'The audio is destroyed', body: 'The instant the transcript exists, the audio is permanently deleted. This step is not optional and cannot be turned off.' },
             { icon: Lock, title: 'It’s encrypted', body: 'The transcript, summary, and your private notes are encrypted the moment they’re saved — scrambled into unreadable ciphertext that only your account can unlock.' },
             { icon: ShieldCheck, title: 'Saved for your eyes only', body: 'Your encrypted notes are stored in your private account, ready whenever you need them — and visible to no one else.' },
           ].map((step, i) => (
@@ -117,7 +117,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
             { icon: Lock, title: 'Encrypted at rest', body: 'Every transcript, summary, and note is encrypted in our database. Even a breach would reveal only unreadable ciphertext.' },
             { icon: ShieldCheck, title: 'Encrypted in transit', body: 'Your data travels over the same bank-grade encrypted connections (TLS) at every step.' },
             { icon: UserCheck, title: 'Yours, and yours alone', body: 'Your patients and sessions are visible only to you — never shared with other therapists, even inside a clinic.' },
-            { icon: MicOff, title: 'No recordings, ever', body: 'We don’t store audio. Full stop. The one thing that can never leak is the thing that doesn’t exist.' },
+            { icon: MicOff, title: 'No audio stored, ever', body: 'We don’t store audio. Full stop. The one thing that can never leak is the thing that doesn’t exist.' },
           ].map((card, i) => (
             <div key={i} className="p-5 bg-card border border-border rounded-xl">
               <div className="size-9 rounded-lg bg-accent/10 flex items-center justify-center mb-3">
@@ -149,7 +149,7 @@ export function HowItWorks({ onBack, backLabel = 'Back to sessions' }: Props) {
             </h3>
             <ul className="space-y-2 text-sm text-foreground/80">
               <li className="flex items-center gap-2">
-                <X className="size-4 text-red-500 shrink-0" /> Your audio recording. Period.
+                <X className="size-4 text-red-500 shrink-0" /> Your audio. Period.
               </li>
             </ul>
           </div>

@@ -124,7 +124,7 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
           : msg === 'upload_failed'
           ? 'Upload failed — but this segment is safe. Check your connection and tap Retry.'
           : msg === 'trial_expired'
-          ? 'Your free trial has ended — subscribe from “Plans & usage” to keep recording.'
+          ? 'Your free trial has ended — subscribe from “Plans & usage” to keep transcribing sessions.'
           : msg === 'no_hours'
           ? 'You’re out of hours for this cycle — upgrade or wait for renewal in “Plans & usage”.'
           : msg === 'past_due' || msg === 'cancelled'
@@ -272,14 +272,14 @@ export function GroupSessionView({ appointment, onBack, onFinish }: Props) {
                 : <Mic className={`size-8 sm:size-10 relative ${phase === 'recording' ? 'text-red-500' : 'text-accent'}`} />}
             </button>
             <h3 className="text-xl sm:text-2xl mb-1" style={{ fontFamily: 'var(--font-serif)' }}>
-              {phase === 'recording' ? 'Listening…'
+              {phase === 'recording' ? 'Transcribing…'
                 : phase === 'submitting' ? 'Saving segment…'
                 : phase === 'failed' ? "Upload didn't go through"
                 : 'Ready when you are'}
             </h3>
             <p className="text-sm text-muted-foreground px-6">
               {phase === 'recording'
-                ? `Recording the ${config.kind === 'joint' ? 'joint' : config.participant.name + ' 1:1'} segment privately.`
+                ? `Transcribing the ${config.kind === 'joint' ? 'joint' : config.participant.name + ' 1:1'} segment privately.`
                 : phase === 'failed'
                 ? 'This segment is still here — it wasn’t lost. See the message above, then try again.'
                 : `Next segment: ${configLabel(config)}. Tap to start.`}

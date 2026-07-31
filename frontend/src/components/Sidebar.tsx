@@ -7,7 +7,7 @@ const SAMPLE_SESSION: PastSession = {
   id: 'sample',
   patientName: 'Sample Patient',
   date: 'SAMPLE',
-  noteSnippet: 'Your session notes will appear here after recording…',
+  noteSnippet: 'Your session notes will appear here after your first session…',
 };
 
 type Props = {
